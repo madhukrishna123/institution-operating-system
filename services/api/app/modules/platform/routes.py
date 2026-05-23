@@ -18,6 +18,8 @@ from app.modules.platform.models import (
     AgentWorkItem,
     ConfigModule,
     Institution,
+    MasterDataOption,
+    MasterDataSet,
     ModuleField,
     ModuleFieldOption,
     ModuleRecordValue,
@@ -28,11 +30,16 @@ from app.modules.platform.models import (
     WorkspaceWidget,
 )
 from app.modules.platform.schemas import (
+    AdminUserCreate,
+    AdminUserUpdate,
     LoginRequest,
     InstitutionUpdate,
+    MasterDataOptionCreate,
+    MasterDataOptionUpdate,
     ModuleFieldCreate,
     ModuleFieldUpdate,
     ModuleConfigUpdate,
+    PasswordReset,
     RejectRequest,
     WorkflowUpdate,
 )
@@ -70,6 +77,8 @@ def current_user(
     user = db.get(UserAccount, user_id)
     if not user:
         raise HTTPException(status_code=401, detail="Unknown user")
+    if not user.active:
+        raise HTTPException(status_code=401, detail="User is disabled")
     return user
 
 
@@ -80,7 +89,7 @@ def field_config(db: Session, module_key: str) -> list[dict]:
         .order_by(ModuleField.order)
     ).all()
     return [
-        with_field_options({
+        with_field_options(db, {
             "id": field.id,
             "key": field.key,
             "label": field.label,
@@ -93,21 +102,10 @@ def field_config(db: Session, module_key: str) -> list[dict]:
     ]
 
 
-def with_field_options(field: dict) -> dict:
+def with_field_options(db: Session, field: dict) -> dict:
     option_sets = {
-        "class_name": [
-            {"label": "Grade 8", "value": "Grade 8"},
-            {"label": "Grade 9", "value": "Grade 9"},
-            {"label": "Grade 10", "value": "Grade 10"},
-            {"label": "Grade 11", "value": "Grade 11"},
-            {"label": "Grade 12", "value": "Grade 12"},
-        ],
-        "section": [
-            {"label": "A", "value": "A"},
-            {"label": "B", "value": "B"},
-            {"label": "C", "value": "C"},
-            {"label": "D", "value": "D"},
-        ],
+        "class_name": master_options(db, "classes"),
+        "section": master_options(db, "sections"),
         "status": [
             {"label": "Active", "value": "active"},
             {"label": "Inactive", "value": "inactive"},
@@ -129,6 +127,15 @@ def field_options(db: Session, field_id: int) -> list[dict[str, str]]:
     return [{"label": row.label, "value": row.value} for row in rows]
 
 
+def master_options(db: Session, set_key: str) -> list[dict[str, str]]:
+    rows = db.scalars(
+        select(MasterDataOption)
+        .where(MasterDataOption.set_key == set_key, MasterDataOption.active == True)
+        .order_by(MasterDataOption.order, MasterDataOption.label)
+    ).all()
+    return [{"label": row.label, "value": row.value} for row in rows]
+
+
 def all_field_config(db: Session, module_key: str) -> list[dict]:
     fields = db.scalars(
         select(ModuleField)
@@ -136,7 +143,7 @@ def all_field_config(db: Session, module_key: str) -> list[dict]:
         .order_by(ModuleField.order)
     ).all()
     return [
-        with_field_options({
+        with_field_options(db, {
             "id": field.id,
             "key": field.key,
             "label": field.label,
@@ -232,11 +239,7 @@ def create_fields(db: Session, module_key: str) -> list[dict]:
                 "label": "Status",
                 "type": "select",
                 "required": True,
-                "options": [
-                    {"label": "Present", "value": "present"},
-                    {"label": "Absent", "value": "absent"},
-                    {"label": "Late", "value": "late"},
-                ],
+                "options": master_options(db, "attendance_statuses"),
             },
             {"key": "note", "label": "Note", "type": "text", "required": False},
         ]
@@ -249,7 +252,13 @@ def create_fields(db: Session, module_key: str) -> list[dict]:
                 "required": True,
                 "options": student_options(db),
             },
-            {"key": "fee_name", "label": "Fee", "type": "text", "required": True},
+            {
+                "key": "fee_name",
+                "label": "Fee",
+                "type": "select",
+                "required": True,
+                "options": master_options(db, "fee_types"),
+            },
             {"key": "amount", "label": "Amount", "type": "number", "required": True},
             {"key": "paid_amount", "label": "Paid", "type": "number", "required": False},
             {
@@ -328,7 +337,9 @@ def create_agent_work_for_attendance(
 def seed_users(db: Session = Depends(get_db)) -> list[dict]:
     if settings.environment == "production":
         return []
-    users = db.scalars(select(UserAccount).order_by(UserAccount.role)).all()
+    users = db.scalars(
+        select(UserAccount).where(UserAccount.active == True).order_by(UserAccount.role)
+    ).all()
     return [
         {
             "email": user.email,
@@ -343,7 +354,7 @@ def seed_users(db: Session = Depends(get_db)) -> list[dict]:
 @router.post("/auth/login")
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> dict:
     user = db.scalar(select(UserAccount).where(UserAccount.email == payload.email))
-    if not user or not verify_password(payload.password, user.password):
+    if not user or not user.active or not verify_password(payload.password, user.password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not is_hashed_password(user.password):
         user.password = hash_password(payload.password)
@@ -452,6 +463,297 @@ def update_institution(
     institution.locale = payload.locale.strip() or "en-IN"
     db.commit()
     return {"status": "saved", "institution": {"id": institution.id, "name": institution.name, "locale": institution.locale}}
+
+
+def require_admin(user: UserAccount) -> None:
+    if user.role not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin role required")
+
+
+def serialize_user(user: UserAccount, db: Session) -> dict:
+    student = db.get(Student, user.linked_student_id) if user.linked_student_id else None
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+        "active": user.active,
+        "linked_student_id": user.linked_student_id,
+        "linked_student_name": student.full_name if student else "",
+    }
+
+
+def validate_admin_user_payload(
+    db: Session,
+    payload: AdminUserCreate | AdminUserUpdate,
+    existing_id: int | None = None,
+) -> tuple[str, str, str]:
+    name = payload.name.strip()
+    email = payload.email.strip().lower()
+    role = payload.role.strip()
+    allowed_roles = {"super_admin", "admin", "teacher", "student", "parent", "finance", "hr"}
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    if role not in allowed_roles:
+        raise HTTPException(status_code=400, detail="Unknown role")
+    if role in ["student", "parent"] and not payload.linked_student_id:
+        raise HTTPException(status_code=400, detail="Student and parent users must be linked to a student")
+    if payload.linked_student_id and not db.get(Student, payload.linked_student_id):
+        raise HTTPException(status_code=400, detail="Linked student was not found")
+    duplicate_query = select(UserAccount).where(UserAccount.email == email)
+    if existing_id:
+        duplicate_query = duplicate_query.where(UserAccount.id != existing_id)
+    if db.scalar(duplicate_query):
+        raise HTTPException(status_code=409, detail="Email already exists")
+    return name, email, role
+
+
+@router.get("/admin/users")
+def admin_users(
+    user: UserAccount = Depends(current_user), db: Session = Depends(get_db)
+) -> list[dict]:
+    require_admin(user)
+    rows = db.scalars(select(UserAccount).order_by(UserAccount.role, UserAccount.name)).all()
+    return [serialize_user(row, db) for row in rows]
+
+
+@router.get("/admin/user-options")
+def admin_user_options(
+    user: UserAccount = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    require_admin(user)
+    students = db.scalars(select(Student).order_by(Student.full_name)).all()
+    return {
+        "roles": [
+            {"label": "Super Admin", "value": "super_admin"},
+            {"label": "Institution Admin", "value": "admin"},
+            {"label": "Teacher", "value": "teacher"},
+            {"label": "Student", "value": "student"},
+            {"label": "Parent", "value": "parent"},
+            {"label": "Finance", "value": "finance"},
+            {"label": "HR", "value": "hr"},
+        ],
+        "students": [
+            {
+                "label": f"{student.full_name} - {student.class_name}-{student.section}",
+                "value": student.id,
+            }
+            for student in students
+        ],
+    }
+
+
+@router.post("/admin/users")
+def create_admin_user(
+    payload: AdminUserCreate,
+    user: UserAccount = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_admin(user)
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    name, email, role = validate_admin_user_payload(db, payload)
+    row = UserAccount(
+        institution_id=user.institution_id,
+        name=name,
+        email=email,
+        role=role,
+        password=hash_password(payload.password),
+        active=payload.active,
+        linked_student_id=payload.linked_student_id if role in ["student", "parent"] else None,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"status": "created", "user": serialize_user(row, db)}
+
+
+@router.patch("/admin/users/{user_id}")
+def update_admin_user(
+    user_id: int,
+    payload: AdminUserUpdate,
+    user: UserAccount = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_admin(user)
+    row = db.get(UserAccount, user_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="User not found")
+    name, email, role = validate_admin_user_payload(db, payload, existing_id=user_id)
+    row.name = name
+    row.email = email
+    row.role = role
+    row.active = payload.active
+    row.linked_student_id = payload.linked_student_id if role in ["student", "parent"] else None
+    db.commit()
+    return {"status": "updated", "user": serialize_user(row, db)}
+
+
+@router.post("/admin/users/{user_id}/reset-password")
+def reset_admin_user_password(
+    user_id: int,
+    payload: PasswordReset,
+    user: UserAccount = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_admin(user)
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    row = db.get(UserAccount, user_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="User not found")
+    row.password = hash_password(payload.password)
+    db.commit()
+    return {"status": "password_reset", "id": user_id}
+
+
+@router.post("/admin/users/{user_id}/disable")
+def disable_admin_user(
+    user_id: int,
+    user: UserAccount = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_admin(user)
+    row = db.get(UserAccount, user_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="User not found")
+    row.active = False
+    db.commit()
+    return {"status": "disabled", "id": user_id}
+
+
+@router.post("/admin/users/{user_id}/enable")
+def enable_admin_user(
+    user_id: int,
+    user: UserAccount = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_admin(user)
+    row = db.get(UserAccount, user_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="User not found")
+    row.active = True
+    db.commit()
+    return {"status": "enabled", "id": user_id}
+
+
+def serialize_master_data_option(row: MasterDataOption) -> dict:
+    return {
+        "id": row.id,
+        "label": row.label,
+        "value": row.value,
+        "order": row.order,
+        "active": row.active,
+    }
+
+
+@router.get("/admin/master-data")
+def admin_master_data(
+    user: UserAccount = Depends(current_user), db: Session = Depends(get_db)
+) -> list[dict]:
+    require_admin(user)
+    sets = db.scalars(select(MasterDataSet).order_by(MasterDataSet.label)).all()
+    return [
+        {
+            "key": row.key,
+            "label": row.label,
+            "description": row.description,
+            "options": [
+                serialize_master_data_option(option)
+                for option in db.scalars(
+                    select(MasterDataOption)
+                    .where(MasterDataOption.set_key == row.key)
+                    .order_by(MasterDataOption.order, MasterDataOption.label)
+                ).all()
+            ],
+        }
+        for row in sets
+    ]
+
+
+@router.post("/admin/master-data/{set_key}/options")
+def create_master_data_option(
+    set_key: str,
+    payload: MasterDataOptionCreate,
+    user: UserAccount = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_admin(user)
+    if not db.scalar(select(MasterDataSet).where(MasterDataSet.key == set_key)):
+        raise HTTPException(status_code=404, detail="Master data set not found")
+    label = payload.label.strip()
+    value = (payload.value.strip() or label).lower().replace(" ", "_")
+    if set_key in ["classes", "sections", "fee_types"]:
+        value = payload.value.strip() or label
+    if set_key == "attendance_statuses":
+        value = (payload.value.strip() or label).lower()
+    if not label:
+        raise HTTPException(status_code=400, detail="Option label is required")
+    if db.scalar(select(MasterDataOption).where(MasterDataOption.set_key == set_key, MasterDataOption.value == value)):
+        raise HTTPException(status_code=409, detail="Option value already exists in this set")
+    max_order = db.scalar(select(func.max(MasterDataOption.order)).where(MasterDataOption.set_key == set_key))
+    row = MasterDataOption(
+        set_key=set_key,
+        label=label,
+        value=value,
+        active=payload.active,
+        order=(max_order or 0) + 1,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"status": "created", "option": serialize_master_data_option(row)}
+
+
+@router.patch("/admin/master-data/{set_key}/options/{option_id}")
+def update_master_data_option(
+    set_key: str,
+    option_id: int,
+    payload: MasterDataOptionUpdate,
+    user: UserAccount = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_admin(user)
+    row = db.get(MasterDataOption, option_id)
+    if not row or row.set_key != set_key:
+        raise HTTPException(status_code=404, detail="Option not found")
+    label = payload.label.strip()
+    value = payload.value.strip()
+    if not label or not value:
+        raise HTTPException(status_code=400, detail="Option label and value are required")
+    duplicate = db.scalar(
+        select(MasterDataOption).where(
+            MasterDataOption.set_key == set_key,
+            MasterDataOption.value == value,
+            MasterDataOption.id != option_id,
+        )
+    )
+    if duplicate:
+        raise HTTPException(status_code=409, detail="Option value already exists in this set")
+    row.label = label
+    row.value = value
+    row.active = payload.active
+    row.order = payload.order
+    db.commit()
+    return {"status": "updated", "option": serialize_master_data_option(row)}
+
+
+@router.delete("/admin/master-data/{set_key}/options/{option_id}")
+def delete_master_data_option(
+    set_key: str,
+    option_id: int,
+    user: UserAccount = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_admin(user)
+    row = db.get(MasterDataOption, option_id)
+    if not row or row.set_key != set_key:
+        raise HTTPException(status_code=404, detail="Option not found")
+    db.delete(row)
+    db.commit()
+    return {"status": "deleted", "id": option_id}
 
 
 @router.post("/config/modules")

@@ -21,6 +21,7 @@ class UserAccount(Base):
     email: Mapped[str] = mapped_column(String(160), unique=True, index=True)
     role: Mapped[str] = mapped_column(String(40), index=True)
     password: Mapped[str] = mapped_column(String(255), default="password")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
     linked_student_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
@@ -67,6 +68,26 @@ class ModuleRecordValue(Base):
     record_id: Mapped[int] = mapped_column(Integer, index=True)
     field_key: Mapped[str] = mapped_column(String(80), index=True)
     value: Mapped[str] = mapped_column(Text, default="")
+
+
+class MasterDataSet(Base):
+    __tablename__ = "master_data_sets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text, default="")
+
+
+class MasterDataOption(Base):
+    __tablename__ = "master_data_options"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    set_key: Mapped[str] = mapped_column(String(80), index=True)
+    label: Mapped[str] = mapped_column(String(120))
+    value: Mapped[str] = mapped_column(String(120))
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class RoleNavigation(Base):

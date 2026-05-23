@@ -45,3 +45,37 @@ class WorkflowUpdate(BaseModel):
 
 class RejectRequest(BaseModel):
     reason: str = ""
+
+
+class AdminUserCreate(BaseModel):
+    name: str
+    email: str
+    role: str
+    password: str
+    active: bool = True
+    linked_student_id: int | None = None
+
+
+class AdminUserUpdate(BaseModel):
+    name: str
+    email: str
+    role: str
+    active: bool = True
+    linked_student_id: int | None = None
+
+
+class PasswordReset(BaseModel):
+    password: str
+
+
+class MasterDataOptionCreate(BaseModel):
+    label: str
+    value: str = ""
+    active: bool = True
+
+
+class MasterDataOptionUpdate(BaseModel):
+    label: str
+    value: str
+    active: bool = True
+    order: int = 0

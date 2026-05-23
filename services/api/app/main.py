@@ -17,6 +17,8 @@ from app.modules.platform.models import (
     ModuleField,
     ModuleFieldOption,
     ModuleRecordValue,
+    MasterDataOption,
+    MasterDataSet,
     Notice,
     RoleNavigation,
     UserAccount,
@@ -55,6 +57,7 @@ app.include_router(social_router, prefix="/api/social", tags=["social"])
 @app.on_event("startup")
 def create_tables() -> None:
     Base.metadata.create_all(bind=engine)
+    ensure_sqlite_compatibility()
     from app.db import SessionLocal
 
     db = SessionLocal()
@@ -74,3 +77,15 @@ def ready() -> dict[str, str]:
     with engine.connect() as connection:
         connection.execute(text("select 1"))
     return {"status": "ready", "database": "ok"}
+
+
+def ensure_sqlite_compatibility() -> None:
+    if not settings.database_url.startswith("sqlite"):
+        return
+    with engine.begin() as connection:
+        user_columns = [
+            row[1]
+            for row in connection.execute(text("PRAGMA table_info(user_accounts)")).fetchall()
+        ]
+        if "active" not in user_columns:
+            connection.execute(text("ALTER TABLE user_accounts ADD COLUMN active BOOLEAN DEFAULT 1"))

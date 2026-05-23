@@ -11,6 +11,8 @@ from app.modules.platform.models import (
     ApprovalRule,
     ConfigModule,
     Institution,
+    MasterDataOption,
+    MasterDataSet,
     ModuleField,
     RoleNavigation,
     UserAccount,
@@ -35,8 +37,11 @@ ROLES = [
 def seed_platform(db: Session) -> None:
     existing_institution = db.scalar(select(Institution).limit(1))
     if existing_institution:
+        ensure_master_data(db)
         if settings.environment == "production":
             ensure_bootstrap_admin(db, existing_institution)
+            db.commit()
+        else:
             db.commit()
         return
 
@@ -103,6 +108,7 @@ def seed_platform(db: Session) -> None:
             for email, name, role, student_id, password in users
         ]
     )
+    ensure_master_data(db)
 
     modules = [
         ("students", "Students", "Identity, guardians, classes, and learner context.", "GraduationCap", "cyan"),
@@ -262,3 +268,44 @@ def ensure_bootstrap_admin(db: Session, institution: Institution) -> None:
             linked_student_id=None,
         )
     )
+
+
+def ensure_master_data(db: Session) -> None:
+    sets = [
+        ("classes", "Classes", "Class/grade values used in student records."),
+        ("sections", "Sections", "Section values used in student records."),
+        ("fee_types", "Fee Types", "Fee names used while creating invoices."),
+        ("attendance_statuses", "Attendance Statuses", "Allowed attendance status values."),
+    ]
+    defaults = {
+        "classes": ["Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"],
+        "sections": ["A", "B", "C", "D"],
+        "fee_types": ["Admission Fee", "Term Fee", "Transport Fee", "Exam Fee"],
+        "attendance_statuses": ["Present", "Absent", "Late"],
+    }
+    for key, label, description in sets:
+        exists = db.scalar(select(MasterDataSet).where(MasterDataSet.key == key))
+        if not exists:
+            db.add(MasterDataSet(key=key, label=label, description=description))
+        existing_values = {
+            value
+            for value in db.scalars(
+                select(MasterDataOption.value).where(MasterDataOption.set_key == key)
+            ).all()
+        }
+        for index, label_value in enumerate(defaults[key]):
+            value = label_value.lower().replace(" ", "_")
+            if key in ["classes", "sections", "fee_types"]:
+                value = label_value
+            if key == "attendance_statuses":
+                value = label_value.lower()
+            if value not in existing_values:
+                db.add(
+                    MasterDataOption(
+                        set_key=key,
+                        label=label_value,
+                        value=value,
+                        order=index,
+                        active=True,
+                    )
+                )
