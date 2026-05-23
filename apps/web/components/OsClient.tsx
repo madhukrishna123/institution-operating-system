@@ -1,0 +1,568 @@
+"use client";
+
+import {
+  BookOpen,
+  CalendarDays,
+  ChevronRight,
+  CircleDollarSign,
+  ClipboardCheck,
+  GraduationCap,
+  LayoutDashboard,
+  LogOut,
+  Settings,
+  Users
+} from "lucide-react";
+import type { FormEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { AdminConfigBuilder } from "./AdminConfigBuilder";
+import { AgentWorkQueue } from "./AgentWorkQueue";
+import { ConfigurableForm } from "./ConfigurableForm";
+import { ConfigurableListView } from "./ConfigurableListView";
+import { ApiSession, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+
+type SeedUser = {
+  email: string;
+  name: string;
+  role: string;
+  password: string;
+};
+
+type Workspace = {
+  user: { name: string; email: string; role: string };
+  institution: { name: string; locale: string };
+  navigation: { label: string; href: string; module_key: string; icon: string; accent: string }[];
+  agent_summary?: { pending: number; mode: string };
+};
+
+type FieldConfig = {
+  key: string;
+  label: string;
+  type: string;
+  visible: boolean;
+  required: boolean;
+  options?: { label: string; value: string }[];
+};
+
+type ModulePayload = {
+  module: { key: string; label: string; description: string; accent: string };
+  fields: FieldConfig[];
+  create_fields: FieldConfig[];
+  records: Record<string, string | number | boolean | null>[];
+  can_create: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+};
+
+type AgentWork = {
+  id: number;
+  agent: string;
+  title: string;
+  recommendation: string;
+  draft_output: string;
+  confidence: string;
+  status: string;
+  audit_trail: string;
+};
+
+const workingModules = new Set(["students", "attendance", "fees", "configuration"]);
+
+const icons = {
+  BookOpen,
+  CalendarDays,
+  CircleDollarSign,
+  ClipboardCheck,
+  GraduationCap,
+  LayoutDashboard,
+  Settings,
+  Users
+};
+
+function roleLabel(role: string) {
+  return role
+    .split("_")
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function defaultValues(moduleKey: string): Record<string, string> {
+  if (moduleKey === "students") {
+    return { status: "active" };
+  }
+  return {};
+}
+
+export function OsClient({
+  initialModule = "workspace",
+  initialSeedUsers = []
+}: {
+  initialModule?: string;
+  initialSeedUsers?: SeedUser[];
+}) {
+  const [seedUsers, setSeedUsers] = useState<SeedUser[]>(initialSeedUsers);
+  const [session, setSession] = useState<ApiSession | null>(null);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [selectedModule, setSelectedModule] = useState(initialModule);
+  const [modulePayload, setModulePayload] = useState<ModulePayload | null>(null);
+  const [agentWork, setAgentWork] = useState<AgentWork[]>([]);
+  const [editingRecord, setEditingRecord] = useState<Record<string, string | number | boolean | null> | null>(null);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const token = session?.token ?? "";
+  const canConfigure = session?.role === "admin" || session?.role === "super_admin";
+
+  const navigation = useMemo(
+    () => (workspace?.navigation ?? []).filter((item) => workingModules.has(item.module_key)),
+    [workspace]
+  );
+
+  useEffect(() => {
+    if (initialSeedUsers.length === 0) {
+      apiGet<SeedUser[]>("/api/auth/seed-users")
+        .then(setSeedUsers)
+        .catch((nextError) => setError(`Could not load users: ${nextError.message}`));
+    }
+    const saved = window.localStorage.getItem("ai_os_session");
+    if (saved) {
+      try {
+        setSession(JSON.parse(saved));
+      } catch {
+        window.localStorage.removeItem("ai_os_session");
+      }
+    }
+  }, [initialSeedUsers.length]);
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+    loadWorkspace();
+    loadAgentWork();
+  }, [session]);
+
+  useEffect(() => {
+    setEditingRecord(null);
+    setMessage("");
+    if (!token || selectedModule === "workspace" || selectedModule === "configuration") {
+      setModulePayload(null);
+      return;
+    }
+    refreshModule();
+  }, [selectedModule, token]);
+
+  async function loadWorkspace() {
+    if (!session) {
+      return;
+    }
+    try {
+      const nextWorkspace = await apiGet<Workspace>("/api/me/workspace", session.token);
+      setWorkspace(nextWorkspace);
+      setError("");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Could not load workspace");
+      window.localStorage.removeItem("ai_os_session");
+      setSession(null);
+      setWorkspace(null);
+    }
+  }
+
+  async function refreshModule() {
+    if (!token || selectedModule === "workspace" || selectedModule === "configuration") {
+      return;
+    }
+    try {
+      const refreshed = await apiGet<ModulePayload>(`/api/modules/${selectedModule}/records`, token);
+      setModulePayload(refreshed);
+      setError("");
+    } catch (nextError) {
+      setModulePayload(null);
+      setError(nextError instanceof Error ? nextError.message : "Could not load module");
+    }
+  }
+
+  async function loadAgentWork() {
+    if (!session?.token) {
+      return;
+    }
+    try {
+      const items = await apiGet<AgentWork[]>("/api/agent-work", session.token);
+      setAgentWork(items);
+    } catch {
+      setAgentWork([]);
+    }
+  }
+
+  async function login(email: string, password = "password") {
+    try {
+      setIsLoggingIn(true);
+      const nextSession = await apiPost<ApiSession>("/api/auth/login", {
+        email,
+        password
+      });
+      window.localStorage.setItem("ai_os_session", JSON.stringify(nextSession));
+      setSession(nextSession);
+      setSelectedModule(initialModule === "workspace" ? "workspace" : initialModule);
+      setError("");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Login failed");
+    } finally {
+      setIsLoggingIn(false);
+    }
+  }
+
+  function submitEmailLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    login(loginEmail.trim(), loginPassword);
+  }
+
+  function logout() {
+    window.localStorage.removeItem("ai_os_session");
+    setSession(null);
+    setWorkspace(null);
+    setModulePayload(null);
+    setSelectedModule("workspace");
+  }
+
+  async function createRecord(payload: Record<string, string>) {
+    await apiPost(`/api/modules/${selectedModule}/records`, payload, token);
+    await refreshModule();
+    await loadAgentWork();
+    setMessage(`${modulePayload?.module.label ?? "Record"} created.`);
+  }
+
+  async function updateRecord(payload: Record<string, string>) {
+    if (!editingRecord?.id) {
+      return;
+    }
+    await apiPatch(`/api/modules/${selectedModule}/records/${editingRecord.id}`, payload, token);
+    setEditingRecord(null);
+    await refreshModule();
+    await loadAgentWork();
+    setMessage(`${modulePayload?.module.label ?? "Record"} updated.`);
+  }
+
+  async function deleteRecord(record: Record<string, string | number | boolean | null>) {
+    if (!record.id) {
+      return;
+    }
+    const name = String(
+      record.full_name ??
+      record.admission_number ??
+      record.student_name ??
+      record.fee_name ??
+      "this record"
+    );
+    if (!window.confirm(`Delete ${name}?`)) {
+      return;
+    }
+    await apiDelete(`/api/modules/${selectedModule}/records/${record.id}`, token);
+    if (editingRecord?.id === record.id) {
+      setEditingRecord(null);
+    }
+    await refreshModule();
+    await loadAgentWork();
+    setMessage(`${modulePayload?.module.label ?? "Record"} deleted.`);
+  }
+
+  function editValues(): Record<string, string> {
+    if (!editingRecord) {
+      return defaultValues(selectedModule);
+    }
+    return Object.fromEntries(
+      Object.entries(editingRecord)
+        .filter(([key]) => key !== "id")
+        .map(([key, value]) => [key, String(value ?? "")])
+    );
+  }
+
+  if (!session || !workspace) {
+    return (
+      <main className="min-h-screen overflow-hidden text-[#1f2933]">
+        <section className="mx-auto flex min-h-screen max-w-6xl items-center px-5 py-10">
+          <div className="grid w-full gap-8 lg:grid-cols-[1fr_410px]">
+            <div className="relative">
+              <div className="mb-5 inline-flex rounded-full border border-[#dfc7a8] bg-white/60 px-3 py-1 text-sm font-semibold text-[#865d23] shadow-sm backdrop-blur">
+                Institution OS
+              </div>
+              <h1 className="max-w-3xl text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
+                Run your institution with calm, clarity, and care.
+              </h1>
+              <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600">
+                A warm operating layer for admissions, attendance, fees, and daily follow-ups. Built to feel simple for teams, parents, and students.
+              </p>
+              <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-3">
+                {["Students", "Attendance", "Fees"].map((item) => (
+                  <div className="rounded-2xl border border-white/70 bg-white/55 p-4 shadow-sm backdrop-blur" key={item}>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#a36b22]">Ready</p>
+                    <p className="mt-2 font-semibold text-slate-900">{item}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-[28px] border border-white/75 bg-white/70 p-6 shadow-[0_24px_80px_rgba(72,52,28,0.14)] backdrop-blur-xl">
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-[#9a6a28]">Welcome back</p>
+                  <h2 className="text-2xl font-semibold">{seedUsers.length > 0 ? "Choose account" : "Sign in"}</h2>
+                </div>
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#173b45] text-sm font-bold text-white">
+                  OS
+                </div>
+              </div>
+              {error ? (
+                <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {error}
+                </div>
+              ) : null}
+              {seedUsers.length > 0 ? (
+                <div className="mt-4 space-y-2">
+                  {seedUsers.map((user) => (
+                    <button
+                      className="group flex w-full items-center justify-between rounded-2xl border border-white bg-white/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#d9b980] hover:bg-white hover:shadow-md"
+                      key={user.email}
+                      onClick={() => login(user.email, user.password ?? "password")}
+                      disabled={isLoggingIn}
+                    >
+                      <span>
+                        <span className="block font-medium">{user.name}</span>
+                        <span className="text-sm text-slate-500">{roleLabel(user.role)}</span>
+                      </span>
+                      <ChevronRight className="text-[#9a6a28] transition group-hover:translate-x-0.5" size={18} />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <form className="mt-4 space-y-3" onSubmit={submitEmailLogin}>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Email
+                    <input
+                      className="mt-1 w-full rounded-2xl border border-[#e6d6bf] bg-white/80 px-3 py-2.5 text-slate-950 outline-none transition focus:border-[#173b45] focus:ring-4 focus:ring-[#d6ece8]"
+                      type="email"
+                      value={loginEmail}
+                      onChange={(event) => setLoginEmail(event.target.value)}
+                      autoComplete="email"
+                      required
+                    />
+                  </label>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Password
+                    <input
+                      className="mt-1 w-full rounded-2xl border border-[#e6d6bf] bg-white/80 px-3 py-2.5 text-slate-950 outline-none transition focus:border-[#173b45] focus:ring-4 focus:ring-[#d6ece8]"
+                      type="password"
+                      value={loginPassword}
+                      onChange={(event) => setLoginPassword(event.target.value)}
+                      autoComplete="current-password"
+                      required
+                    />
+                  </label>
+                  <button
+                    className="flex w-full items-center justify-center rounded-2xl bg-[#173b45] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0f2c34] disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isLoggingIn}
+                  >
+                    {isLoggingIn ? "Signing in..." : "Sign in"}
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen text-[#1f2933]">
+      <div className="grid min-h-screen lg:grid-cols-[280px_1fr]">
+        <aside className="border-r border-white/70 bg-white/55 p-4 backdrop-blur-xl">
+          <div className="mb-6 rounded-[24px] bg-[#173b45] p-4 text-white shadow-[0_20px_60px_rgba(23,59,69,0.20)]">
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#f6d39b]">Institution OS</p>
+            <p className="mt-2 text-lg font-semibold leading-6">{workspace.institution.name}</p>
+          </div>
+          <nav className="space-y-1">
+            <button
+              className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-semibold transition ${
+                selectedModule === "workspace" ? "bg-white text-[#173b45] shadow-sm" : "text-slate-600 hover:bg-white/60 hover:text-slate-950"
+              }`}
+              onClick={() => setSelectedModule("workspace")}
+            >
+              <LayoutDashboard size={17} />
+              Dashboard
+            </button>
+            {navigation.map((item) => {
+              const Icon = icons[item.icon as keyof typeof icons] ?? LayoutDashboard;
+              return (
+                <button
+                  className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-semibold transition ${
+                    selectedModule === item.module_key ? "bg-white text-[#173b45] shadow-sm" : "text-slate-600 hover:bg-white/60 hover:text-slate-950"
+                  }`}
+                  key={item.module_key}
+                  onClick={() => setSelectedModule(item.module_key)}
+                >
+                  <Icon size={17} />
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <section className="min-w-0">
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/70 bg-white/45 px-6 py-4 backdrop-blur-xl">
+            <div>
+              <p className="text-sm font-medium text-[#9a6a28]">{roleLabel(session.role)}</p>
+              <h1 className="text-2xl font-semibold tracking-tight">
+                {selectedModule === "workspace"
+                  ? "Dashboard"
+                  : selectedModule === "configuration"
+                    ? "Configuration"
+                    : modulePayload?.module.label ?? "Module"}
+              </h1>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl border border-white bg-white/65 px-3 py-2 text-sm text-slate-600 shadow-sm">
+                {session.user.name}
+              </div>
+              <button
+                className="flex items-center gap-2 rounded-2xl border border-white bg-white/65 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-white"
+                onClick={logout}
+              >
+                <LogOut size={16} />
+                Logout
+              </button>
+            </div>
+          </header>
+
+          <div className="p-5 md:p-7">
+            {error ? (
+              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {error}
+              </div>
+            ) : null}
+            {message ? (
+              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+                {message}
+              </div>
+            ) : null}
+
+            {selectedModule === "workspace" ? (
+              <section className="space-y-5">
+                <div className="rounded-[28px] border border-white/75 bg-white/60 p-6 shadow-sm backdrop-blur">
+                  <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9a6a28]">Today workspace</p>
+                  <h2 className="mt-2 text-3xl font-semibold tracking-tight">Everything important, gently organized.</h2>
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+                    Start with the working modules below. As the product grows, new intelligence can appear here only when it is useful.
+                  </p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-3">
+                  {navigation.map((item) => {
+                    const Icon = icons[item.icon as keyof typeof icons] ?? LayoutDashboard;
+                    return (
+                      <button
+                        className="rounded-[24px] border border-white/75 bg-white/65 p-5 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-[#d9b980] hover:bg-white hover:shadow-md"
+                        key={item.module_key}
+                        onClick={() => setSelectedModule(item.module_key)}
+                      >
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#e7f2ef] text-[#173b45]">
+                          <Icon size={21} />
+                        </div>
+                        <h2 className="mt-4 text-lg font-semibold">{item.label}</h2>
+                        <p className="mt-2 text-sm leading-6 text-slate-500">
+                          Open {item.label.toLowerCase()} records and daily actions.
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
+                  <div className="rounded-[24px] border border-white/75 bg-white/60 p-5 shadow-sm backdrop-blur">
+                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9a6a28]">Pending items</p>
+                    <h2 className="mt-2 text-xl font-semibold">Needs admin review</h2>
+                    <div className="mt-4 space-y-3">
+                      {agentWork.filter((item) => item.status === "admin_review").length === 0 ? (
+                        <div className="rounded-2xl border border-[#eadcc9] bg-white/55 p-4 text-sm text-slate-500">
+                          No pending approval items right now.
+                        </div>
+                      ) : (
+                        agentWork
+                          .filter((item) => item.status === "admin_review")
+                          .map((item) => (
+                            <article className="rounded-2xl border border-[#eadcc9] bg-white/65 p-4" key={item.id}>
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#9a6a28]">{item.agent}</p>
+                                  <h3 className="mt-1 font-semibold">{item.title}</h3>
+                                </div>
+                                <span className="rounded-full bg-[#f7dfb8] px-3 py-1 text-xs font-semibold text-[#70470f]">
+                                  {item.status}
+                                </span>
+                              </div>
+                              <p className="mt-3 text-sm leading-6 text-slate-600">{item.recommendation}</p>
+                            </article>
+                          ))
+                      )}
+                    </div>
+                  </div>
+                  <AgentWorkQueue
+                    items={agentWork}
+                    token={token}
+                    canApprove={canConfigure}
+                    onChange={async () => {
+                      await loadAgentWork();
+                      await loadWorkspace();
+                    }}
+                  />
+                </div>
+              </section>
+            ) : selectedModule === "configuration" && canConfigure ? (
+              <AdminConfigBuilder token={token} onSaved={loadWorkspace} />
+            ) : modulePayload ? (
+              <section className="space-y-4">
+                <div className="rounded-[24px] border border-white/75 bg-white/65 p-5 shadow-sm backdrop-blur">
+                  <p className="text-sm leading-6 text-slate-600">{modulePayload.module.description}</p>
+                </div>
+                {(modulePayload.can_create || editingRecord) && modulePayload.create_fields.length > 0 ? (
+                  <div className="rounded-[24px] border border-white/75 bg-white/65 p-5 shadow-sm backdrop-blur">
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                      <h2 className="text-lg font-semibold">
+                        {editingRecord ? `Edit ${modulePayload.module.label}` : `Create ${modulePayload.module.label}`}
+                      </h2>
+                      {editingRecord ? (
+                        <button
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50"
+                          onClick={() => setEditingRecord(null)}
+                        >
+                          Cancel
+                        </button>
+                      ) : null}
+                    </div>
+                    <ConfigurableForm
+                      fields={modulePayload.create_fields}
+                      initialValues={editValues()}
+                      onSubmit={editingRecord ? updateRecord : createRecord}
+                      submitLabel={editingRecord ? "Save changes" : "Create"}
+                    />
+                  </div>
+                ) : null}
+                <ConfigurableListView
+                  fields={modulePayload.fields}
+                  records={modulePayload.records}
+                  canEdit={modulePayload.can_edit}
+                  canDelete={modulePayload.can_delete}
+                  onEdit={(record) => setEditingRecord(record)}
+                  onDelete={deleteRecord}
+                />
+              </section>
+            ) : (
+              <div className="rounded-2xl border border-slate-200/80 bg-white/85 p-8 text-slate-500 shadow-sm">
+                Loading module...
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}

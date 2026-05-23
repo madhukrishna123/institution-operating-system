@@ -1,0 +1,12 @@
+.git
+.next
+node_modules
+apps/web/.next
+apps/web/node_modules
+services/api/.venv
+services/api/*.log
+services/api/local.db
+__pycache__
+*.pyc
+backups
+docs
