@@ -323,7 +323,7 @@ export function OsClient({
               <div className="mb-5 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-[#9a6a28]">Welcome back</p>
-                  <h2 className="text-2xl font-semibold">{seedUsers.length > 0 ? "Choose account" : "Sign in"}</h2>
+                  <h2 className="text-2xl font-semibold">Sign in</h2>
                 </div>
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#173b45] text-sm font-bold text-white">
                   OS
@@ -337,7 +337,7 @@ export function OsClient({
               {seedUsers.length > 0 ? (
                 <div className="mt-4 space-y-3">
                   <label className="block text-sm font-medium text-slate-700">
-                    Account
+                    Quick role access
                     <select
                       className="mt-1 h-11 w-full rounded-2xl border border-[#e6d6bf] bg-white/80 px-3 text-slate-950 outline-none transition focus:border-[#173b45] focus:ring-4 focus:ring-[#d6ece8]"
                       value={selectedLoginEmail}
@@ -370,7 +370,7 @@ export function OsClient({
               ) : null}
               {seedUsers.length > 0 ? (
                 <div className="mt-5 border-t border-[#eadcc9] pt-5">
-                  <p className="text-sm font-semibold text-slate-700">Sign in with password</p>
+                  <p className="text-sm font-semibold text-slate-700">Email sign in</p>
                   <p className="mt-1 text-xs leading-5 text-slate-500">
                     Use this for users created by admin.
                   </p>
