@@ -1,7 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session
 
 from app.auth import (
@@ -29,6 +29,7 @@ from app.modules.platform.models import (
     ProfileFieldValue,
     RoleProfile,
     RoleNavigation,
+    TeacherAssignment,
     UserAccount,
     WorkflowDefinition,
     WorkspaceWidget,
@@ -48,6 +49,8 @@ from app.modules.platform.schemas import (
     ProfileFieldUpdate,
     RoleProfileUpdate,
     RejectRequest,
+    TeacherAssignmentCreate,
+    TeacherAssignmentUpdate,
     WorkflowUpdate,
 )
 from app.modules.students.models import Student
@@ -107,6 +110,12 @@ def field_config(db: Session, module_key: str) -> list[dict]:
         }) | ({"options": field_options(db, field.id)} if field.field_type == "select" else {})
         for field in fields
     ]
+    if module_key == "attendance":
+        existing_keys = {field["key"] for field in configured_fields}
+        if "class_name" not in existing_keys:
+            configured_fields.insert(2, {"key": "class_name", "label": "Class", "type": "text", "visible": True, "required": False, "order": 2})
+        if "section" not in existing_keys:
+            configured_fields.insert(3, {"key": "section", "label": "Section", "type": "text", "visible": True, "required": False, "order": 3})
     if module_key == "students":
         configured_fields.extend(profile_field_config(db, "student"))
     return configured_fields
@@ -626,6 +635,57 @@ def require_admin(user: UserAccount) -> None:
         raise HTTPException(status_code=403, detail="Admin role required")
 
 
+def teacher_profile(db: Session, user_id: int) -> RoleProfile | None:
+    return db.scalar(
+        select(RoleProfile).where(
+            RoleProfile.user_id == user_id,
+            RoleProfile.profile_type == "teacher",
+        )
+    )
+
+
+def is_principal(db: Session, user: UserAccount) -> bool:
+    if user.role in ["admin", "super_admin"]:
+        return True
+    if user.role != "teacher":
+        return False
+    profile = teacher_profile(db, user.id)
+    designation = (profile.designation if profile else "").strip().lower()
+    return "principal" in designation
+
+
+def active_teacher_assignments(db: Session, user: UserAccount) -> list[TeacherAssignment]:
+    if user.role != "teacher" or is_principal(db, user):
+        return []
+    return db.scalars(
+        select(TeacherAssignment).where(
+            TeacherAssignment.teacher_user_id == user.id,
+            TeacherAssignment.active == True,
+        )
+    ).all()
+
+
+def assigned_class_sections(db: Session, user: UserAccount) -> set[tuple[str, str]]:
+    return {
+        (assignment.class_name, assignment.section)
+        for assignment in active_teacher_assignments(db, user)
+    }
+
+
+def can_access_student(db: Session, user: UserAccount, student: Student | None) -> bool:
+    if not student:
+        return False
+    if user.role in ["admin", "super_admin", "finance"]:
+        return True
+    if user.role in ["student", "parent"]:
+        return student.id == user.linked_student_id
+    if user.role == "teacher":
+        if is_principal(db, user):
+            return True
+        return (student.class_name, student.section) in assigned_class_sections(db, user)
+    return False
+
+
 def serialize_user(user: UserAccount, db: Session) -> dict:
     student = db.get(Student, user.linked_student_id) if user.linked_student_id else None
     return {
@@ -702,6 +762,126 @@ def admin_user_options(
             for student in students
         ],
     }
+
+
+def teacher_assignment_options(db: Session) -> dict:
+    teachers = db.scalars(
+        select(UserAccount)
+        .where(UserAccount.role == "teacher", UserAccount.active == True)
+        .order_by(UserAccount.name)
+    ).all()
+    return {
+        "teachers": [{"label": teacher.name, "value": teacher.id} for teacher in teachers],
+        "classes": master_options(db, "classes"),
+        "sections": master_options(db, "sections"),
+        "subjects": master_options(db, "subjects"),
+        "assignment_roles": master_options(db, "teacher_assignment_roles"),
+    }
+
+
+def serialize_teacher_assignment(row: TeacherAssignment, db: Session) -> dict:
+    teacher = db.get(UserAccount, row.teacher_user_id)
+    return {
+        "id": row.id,
+        "teacher_user_id": row.teacher_user_id,
+        "teacher_name": teacher.name if teacher else "",
+        "class_name": row.class_name,
+        "section": row.section,
+        "subject": row.subject,
+        "assignment_role": row.assignment_role,
+        "active": row.active,
+    }
+
+
+def validate_teacher_assignment(
+    db: Session,
+    payload: TeacherAssignmentCreate | TeacherAssignmentUpdate,
+) -> UserAccount:
+    teacher = db.get(UserAccount, payload.teacher_user_id)
+    if not teacher or teacher.role != "teacher":
+        raise HTTPException(status_code=400, detail="Select a teacher user")
+    if not payload.class_name.strip():
+        raise HTTPException(status_code=400, detail="Class is required")
+    if not payload.section.strip():
+        raise HTTPException(status_code=400, detail="Section is required")
+    return teacher
+
+
+@router.get("/admin/teacher-assignments")
+def get_teacher_assignments(
+    user: UserAccount = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    require_admin(user)
+    rows = db.scalars(
+        select(TeacherAssignment).order_by(
+            TeacherAssignment.class_name,
+            TeacherAssignment.section,
+            TeacherAssignment.subject,
+        )
+    ).all()
+    return {
+        "options": teacher_assignment_options(db),
+        "assignments": [serialize_teacher_assignment(row, db) for row in rows],
+    }
+
+
+@router.post("/admin/teacher-assignments")
+def create_teacher_assignment(
+    payload: TeacherAssignmentCreate,
+    user: UserAccount = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_admin(user)
+    validate_teacher_assignment(db, payload)
+    row = TeacherAssignment(
+        teacher_user_id=payload.teacher_user_id,
+        class_name=payload.class_name.strip(),
+        section=payload.section.strip(),
+        subject=payload.subject.strip(),
+        assignment_role=payload.assignment_role.strip() or "Subject Teacher",
+        active=payload.active,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"status": "created", "assignment": serialize_teacher_assignment(row, db)}
+
+
+@router.patch("/admin/teacher-assignments/{assignment_id}")
+def update_teacher_assignment(
+    assignment_id: int,
+    payload: TeacherAssignmentUpdate,
+    user: UserAccount = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_admin(user)
+    row = db.get(TeacherAssignment, assignment_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    validate_teacher_assignment(db, payload)
+    row.teacher_user_id = payload.teacher_user_id
+    row.class_name = payload.class_name.strip()
+    row.section = payload.section.strip()
+    row.subject = payload.subject.strip()
+    row.assignment_role = payload.assignment_role.strip() or "Subject Teacher"
+    row.active = payload.active
+    db.commit()
+    return {"status": "updated", "assignment": serialize_teacher_assignment(row, db)}
+
+
+@router.delete("/admin/teacher-assignments/{assignment_id}")
+def delete_teacher_assignment(
+    assignment_id: int,
+    user: UserAccount = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_admin(user)
+    row = db.get(TeacherAssignment, assignment_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    db.delete(row)
+    db.commit()
+    return {"status": "deleted"}
 
 
 def role_profile_type_options() -> list[dict[str, str]]:
@@ -1308,6 +1488,14 @@ def module_records(
         query = select(Student).order_by(Student.full_name)
         if user.role in ["student", "parent"] and user.linked_student_id:
             query = query.where(Student.id == user.linked_student_id)
+        if user.role == "teacher" and not is_principal(db, user):
+            scopes = assigned_class_sections(db, user)
+            if scopes:
+                query = query.where(
+                    tuple_(Student.class_name, Student.section).in_(list(scopes))
+                )
+            else:
+                query = query.where(Student.id == -1)
         records = [
             {
                 "id": item.id,
@@ -1333,11 +1521,13 @@ def module_records(
                 "student_id": record.student_id,
                 "attendance_date": str(record.attendance_date),
                 "student_name": student_name,
+                "class_name": db.get(Student, record.student_id).class_name if db.get(Student, record.student_id) else "",
+                "section": db.get(Student, record.student_id).section if db.get(Student, record.student_id) else "",
                 "status": record.status,
                 "note": record.note,
             }
             for record, student_name in rows
-            if user.role not in ["student", "parent"] or record.student_id == user.linked_student_id
+            if can_access_student(db, user, db.get(Student, record.student_id))
         ]
     elif module_key == "fees":
         rows = db.execute(
@@ -1367,6 +1557,49 @@ def module_records(
             for field in record_form_fields
             if field["key"] in {"class_name", "section"} or field.get("source") == "profile_custom"
         ]
+    if module_key == "attendance" and user.role == "teacher" and not is_principal(db, user):
+        scopes = assigned_class_sections(db, user)
+        allowed_students = {
+            str(student.id)
+            for student in db.scalars(select(Student)).all()
+            if (student.class_name, student.section) in scopes
+        }
+        record_form_fields = [
+            (
+                {
+                    **field,
+                    "options": [
+                        option
+                        for option in field.get("options", [])
+                        if str(option["value"]) in allowed_students
+                    ],
+                }
+                if field["key"] == "student_id"
+                else field
+            )
+            for field in record_form_fields
+        ]
+
+    attendance_summary = []
+    if module_key == "attendance":
+        grouped: dict[tuple[str, str, str], dict[str, int | str]] = {}
+        for record in records:
+            key = (str(record["attendance_date"]), str(record["class_name"]), str(record["section"]))
+            if key not in grouped:
+                grouped[key] = {
+                    "attendance_date": key[0],
+                    "class_name": key[1],
+                    "section": key[2],
+                    "total": 0,
+                    "present": 0,
+                    "absent": 0,
+                    "late": 0,
+                }
+            grouped[key]["total"] = int(grouped[key]["total"]) + 1
+            status = str(record["status"]).lower()
+            if status in ["present", "absent", "late"]:
+                grouped[key][status] = int(grouped[key][status]) + 1
+        attendance_summary = list(grouped.values())
 
     return {
         "module": {
@@ -1381,6 +1614,7 @@ def module_records(
         "can_create": can_create_record(module_key, user.role),
         "can_edit": can_edit_record(module_key, user.role),
         "can_delete": can_delete_record(module_key, user.role),
+        "summary": attendance_summary,
     }
 
 
@@ -1456,6 +1690,8 @@ def update_module_record(
         student = db.get(Student, record_id)
         if not student:
             raise HTTPException(status_code=404, detail="Student not found")
+        if not can_access_student(db, user, student):
+            raise HTTPException(status_code=403, detail="Teacher is not assigned to this class/section")
         if user.role == "teacher":
             teacher_fields = [
                 field
@@ -1495,7 +1731,11 @@ def update_module_record(
         attendance = db.get(AttendanceRecord, record_id)
         if not attendance:
             raise HTTPException(status_code=404, detail="Attendance record not found")
+        if not can_access_student(db, user, db.get(Student, attendance.student_id)):
+            raise HTTPException(status_code=403, detail="Teacher is not assigned to this class/section")
         validate_required_fields(create_fields(db, "attendance"), payload)
+        if not can_access_student(db, user, db.get(Student, int(payload["student_id"]))):
+            raise HTTPException(status_code=403, detail="Teacher is not assigned to this class/section")
         attendance.student_id = int(payload["student_id"])
         attendance.attendance_date = date.fromisoformat(str(payload["attendance_date"]))
         attendance.status = str(payload["status"]).strip()
@@ -1589,6 +1829,10 @@ def mark_attendance(
 ) -> dict:
     if user.role not in ["teacher", "admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Attendance marking requires teacher/admin role")
+    student = db.get(Student, int(payload["student_id"]))
+    if not can_access_student(db, user, student):
+        raise HTTPException(status_code=403, detail="Teacher is not assigned to this class/section")
+    validate_required_fields(create_fields(db, "attendance"), payload)
     record = AttendanceRecord(
         student_id=int(payload["student_id"]),
         attendance_date=date.fromisoformat(payload["attendance_date"]),
@@ -1597,7 +1841,6 @@ def mark_attendance(
     )
     db.add(record)
     db.flush()
-    student = db.get(Student, record.student_id)
     agent_work_id = create_agent_work_for_attendance(db, record, student, user)
     db.commit()
     return {"status": "submitted", "attendance_id": record.id, "agent_work_id": agent_work_id}

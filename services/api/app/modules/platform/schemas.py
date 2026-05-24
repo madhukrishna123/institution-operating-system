@@ -116,3 +116,21 @@ class RoleProfileUpdate(BaseModel):
     whatsapp_number: str = ""
     active: bool = True
     custom_values: dict[str, str] = {}
+
+
+class TeacherAssignmentCreate(BaseModel):
+    teacher_user_id: int
+    class_name: str
+    section: str
+    subject: str = ""
+    assignment_role: str = "Subject Teacher"
+    active: bool = True
+
+
+class TeacherAssignmentUpdate(BaseModel):
+    teacher_user_id: int
+    class_name: str
+    section: str
+    subject: str = ""
+    assignment_role: str = "Subject Teacher"
+    active: bool = True

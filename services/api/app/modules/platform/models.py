@@ -125,6 +125,18 @@ class RoleProfile(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class TeacherAssignment(Base):
+    __tablename__ = "teacher_assignments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    teacher_user_id: Mapped[int] = mapped_column(ForeignKey("user_accounts.id"), index=True)
+    class_name: Mapped[str] = mapped_column(String(80), index=True)
+    section: Mapped[str] = mapped_column(String(80), index=True)
+    subject: Mapped[str] = mapped_column(String(120), default="")
+    assignment_role: Mapped[str] = mapped_column(String(80), default="Subject Teacher")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 class MasterDataSet(Base):
     __tablename__ = "master_data_sets"
 

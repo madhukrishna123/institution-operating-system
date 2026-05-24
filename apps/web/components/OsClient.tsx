@@ -45,6 +45,15 @@ type ModulePayload = {
   can_create: boolean;
   can_edit: boolean;
   can_delete: boolean;
+  summary?: {
+    attendance_date: string;
+    class_name: string;
+    section: string;
+    total: number;
+    present: number;
+    absent: number;
+    late: number;
+  }[];
 };
 
 type AgentWork = {
@@ -541,6 +550,41 @@ export function OsClient({
                 <div className="rounded-[24px] border border-white/75 bg-white/65 p-5 shadow-sm backdrop-blur">
                   <p className="text-sm leading-6 text-slate-600">{modulePayload.module.description}</p>
                 </div>
+                {selectedModule === "attendance" && modulePayload.summary?.length ? (
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {modulePayload.summary.slice(0, 6).map((item) => (
+                      <div
+                        className="rounded-[24px] border border-white/75 bg-white/65 p-4 shadow-sm backdrop-blur"
+                        key={`${item.attendance_date}-${item.class_name}-${item.section}`}
+                      >
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#9a6a28]">
+                          {item.attendance_date}
+                        </p>
+                        <h3 className="mt-2 text-lg font-semibold">
+                          {item.class_name} - {item.section}
+                        </h3>
+                        <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs">
+                          <div className="rounded-xl bg-white/65 p-2">
+                            <p className="text-lg font-semibold">{item.total}</p>
+                            <p className="text-slate-500">Total</p>
+                          </div>
+                          <div className="rounded-xl bg-emerald-50 p-2 text-emerald-700">
+                            <p className="text-lg font-semibold">{item.present}</p>
+                            <p>Present</p>
+                          </div>
+                          <div className="rounded-xl bg-rose-50 p-2 text-rose-700">
+                            <p className="text-lg font-semibold">{item.absent}</p>
+                            <p>Absent</p>
+                          </div>
+                          <div className="rounded-xl bg-amber-50 p-2 text-amber-700">
+                            <p className="text-lg font-semibold">{item.late}</p>
+                            <p>Late</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {(modulePayload.can_create || editingRecord) && modulePayload.create_fields.length > 0 ? (
                   <div className="rounded-[24px] border border-white/75 bg-white/65 p-5 shadow-sm backdrop-blur">
                     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

@@ -25,6 +25,7 @@ from app.modules.platform.models import (
     ProfileFieldValue,
     RoleProfile,
     RoleNavigation,
+    TeacherAssignment,
     UserAccount,
     WorkflowDefinition,
     WorkspaceWidget,

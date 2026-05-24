@@ -21,6 +21,7 @@ from app.modules.platform.models import (
     ProfileFieldValue,
     RoleProfile,
     RoleNavigation,
+    TeacherAssignment,
     UserAccount,
     WorkflowDefinition,
     WorkspaceWidget,
@@ -46,6 +47,7 @@ def seed_platform(db: Session) -> None:
         ensure_master_data(db)
         ensure_profile_field_metadata(db)
         ensure_role_profiles(db)
+        ensure_teacher_assignments(db)
         if settings.environment == "production":
             ensure_bootstrap_admin(db, existing_institution)
             db.commit()
@@ -119,6 +121,7 @@ def seed_platform(db: Session) -> None:
     ensure_master_data(db)
     ensure_profile_field_metadata(db)
     ensure_role_profiles(db)
+    ensure_teacher_assignments(db)
 
     modules = [
         ("students", "Students", "Identity, guardians, classes, and learner context.", "GraduationCap", "cyan"),
@@ -286,12 +289,16 @@ def ensure_master_data(db: Session) -> None:
         ("sections", "Sections", "Section values used in student records."),
         ("fee_types", "Fee Types", "Fee names used while creating invoices."),
         ("attendance_statuses", "Attendance Statuses", "Allowed attendance status values."),
+        ("subjects", "Subjects", "Subjects used in teacher class assignments."),
+        ("teacher_assignment_roles", "Teacher Assignment Roles", "Teacher responsibility types."),
     ]
     defaults = {
         "classes": ["Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"],
         "sections": ["A", "B", "C", "D"],
         "fee_types": ["Admission Fee", "Term Fee", "Transport Fee", "Exam Fee"],
         "attendance_statuses": ["Present", "Absent", "Late"],
+        "subjects": ["Maths", "Science", "English", "Social Studies", "Homeroom"],
+        "teacher_assignment_roles": ["Subject Teacher", "Class Teacher", "Coordinator", "Principal Oversight"],
     }
     for key, label, description in sets:
         exists = db.scalar(select(MasterDataSet).where(MasterDataSet.key == key))
@@ -305,7 +312,7 @@ def ensure_master_data(db: Session) -> None:
         }
         for index, label_value in enumerate(defaults[key]):
             value = label_value.lower().replace(" ", "_")
-            if key in ["classes", "sections", "fee_types"]:
+            if key in ["classes", "sections", "fee_types", "subjects", "teacher_assignment_roles"]:
                 value = label_value
             if key == "attendance_statuses":
                 value = label_value.lower()
@@ -418,3 +425,32 @@ def ensure_role_profiles(db: Session) -> None:
                     active=account.active,
                 )
             )
+
+
+def ensure_teacher_assignments(db: Session) -> None:
+    teacher = db.scalar(select(UserAccount).where(UserAccount.role == "teacher"))
+    if not teacher:
+        return
+    exists = db.scalar(select(TeacherAssignment).where(TeacherAssignment.teacher_user_id == teacher.id))
+    if exists:
+        return
+    db.add_all(
+        [
+            TeacherAssignment(
+                teacher_user_id=teacher.id,
+                class_name="Grade 10",
+                section="A",
+                subject="Maths",
+                assignment_role="Subject Teacher",
+                active=True,
+            ),
+            TeacherAssignment(
+                teacher_user_id=teacher.id,
+                class_name="Grade 10",
+                section="A",
+                subject="Homeroom",
+                assignment_role="Class Teacher",
+                active=True,
+            ),
+        ]
+    )
