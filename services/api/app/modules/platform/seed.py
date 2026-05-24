@@ -19,6 +19,7 @@ from app.modules.platform.models import (
     ProfileFieldDefinition,
     ProfileFieldOption,
     ProfileFieldValue,
+    RoleProfile,
     RoleNavigation,
     UserAccount,
     WorkflowDefinition,
@@ -44,6 +45,7 @@ def seed_platform(db: Session) -> None:
     if existing_institution:
         ensure_master_data(db)
         ensure_profile_field_metadata(db)
+        ensure_role_profiles(db)
         if settings.environment == "production":
             ensure_bootstrap_admin(db, existing_institution)
             db.commit()
@@ -116,6 +118,7 @@ def seed_platform(db: Session) -> None:
     )
     ensure_master_data(db)
     ensure_profile_field_metadata(db)
+    ensure_role_profiles(db)
 
     modules = [
         ("students", "Students", "Identity, guardians, classes, and learner context.", "GraduationCap", "cyan"),
@@ -393,3 +396,25 @@ def ensure_profile_field_metadata(db: Session) -> None:
                         value=value.value,
                     )
                 )
+
+
+def ensure_role_profiles(db: Session) -> None:
+    for account in db.scalars(
+        select(UserAccount).where(
+            UserAccount.role.in_(["teacher", "parent", "staff", "finance", "admin"])
+        )
+    ).all():
+        exists = db.scalar(
+            select(RoleProfile).where(
+                RoleProfile.user_id == account.id,
+                RoleProfile.profile_type == account.role,
+            )
+        )
+        if not exists:
+            db.add(
+                RoleProfile(
+                    user_id=account.id,
+                    profile_type=account.role,
+                    active=account.active,
+                )
+            )

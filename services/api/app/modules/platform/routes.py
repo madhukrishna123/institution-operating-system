@@ -27,6 +27,7 @@ from app.modules.platform.models import (
     ProfileFieldDefinition,
     ProfileFieldOption,
     ProfileFieldValue,
+    RoleProfile,
     RoleNavigation,
     UserAccount,
     WorkflowDefinition,
@@ -45,6 +46,7 @@ from app.modules.platform.schemas import (
     PasswordReset,
     ProfileFieldCreate,
     ProfileFieldUpdate,
+    RoleProfileUpdate,
     RejectRequest,
     WorkflowUpdate,
 )
@@ -145,6 +147,7 @@ def master_options(db: Session, set_key: str) -> list[dict[str, str]]:
 
 
 PROFILE_TYPES = ["student", "teacher", "parent", "staff", "finance", "admin"]
+ROLE_PROFILE_TYPES = ["teacher", "parent", "staff", "finance", "admin"]
 CORE_STUDENT_FIELDS = {
     "admission_number",
     "full_name",
@@ -193,6 +196,48 @@ def profile_field_config(
         }
         for field in fields
     ]
+
+
+def profile_custom_values(db: Session, profile_type: str, profile_id: int) -> dict[str, str]:
+    rows = db.scalars(
+        select(ProfileFieldValue).where(
+            ProfileFieldValue.profile_type == profile_type,
+            ProfileFieldValue.profile_id == profile_id,
+        )
+    ).all()
+    return {row.field_key: row.value for row in rows}
+
+
+def save_profile_custom_values(
+    db: Session,
+    profile_type: str,
+    profile_id: int,
+    values: dict[str, str],
+) -> None:
+    fields = profile_field_config(db, profile_type, include_inactive=True)
+    valid_keys = {field["field_key"] for field in fields}
+    for key, raw_value in values.items():
+        if key not in valid_keys:
+            continue
+        value = str(raw_value or "").strip()
+        existing = db.scalar(
+            select(ProfileFieldValue).where(
+                ProfileFieldValue.profile_type == profile_type,
+                ProfileFieldValue.profile_id == profile_id,
+                ProfileFieldValue.field_key == key,
+            )
+        )
+        if existing:
+            existing.value = value
+        else:
+            db.add(
+                ProfileFieldValue(
+                    profile_type=profile_type,
+                    profile_id=profile_id,
+                    field_key=key,
+                    value=value,
+                )
+            )
 
 
 def all_field_config(db: Session, module_key: str) -> list[dict]:
@@ -630,6 +675,107 @@ def admin_user_options(
             for student in students
         ],
     }
+
+
+def role_profile_type_options() -> list[dict[str, str]]:
+    return [
+        {"label": "Teacher", "value": "teacher"},
+        {"label": "Parent", "value": "parent"},
+        {"label": "Staff", "value": "staff"},
+        {"label": "Finance", "value": "finance"},
+        {"label": "Admin", "value": "admin"},
+    ]
+
+
+def ensure_role_profile(db: Session, user: UserAccount, profile_type: str) -> RoleProfile:
+    profile = db.scalar(
+        select(RoleProfile).where(
+            RoleProfile.user_id == user.id,
+            RoleProfile.profile_type == profile_type,
+        )
+    )
+    if profile:
+        return profile
+    profile = RoleProfile(user_id=user.id, profile_type=profile_type, active=user.active)
+    db.add(profile)
+    db.flush()
+    return profile
+
+
+def serialize_role_profile(db: Session, profile: RoleProfile, account: UserAccount) -> dict:
+    return {
+        "id": profile.id,
+        "user_id": account.id,
+        "user_name": account.name,
+        "user_email": account.email,
+        "user_active": account.active,
+        "profile_type": profile.profile_type,
+        "employee_code": profile.employee_code,
+        "department": profile.department,
+        "designation": profile.designation,
+        "subjects": profile.subjects,
+        "assigned_class": profile.assigned_class,
+        "assigned_section": profile.assigned_section,
+        "occupation": profile.occupation,
+        "relationship_type": profile.relationship_type,
+        "preferred_language": profile.preferred_language,
+        "whatsapp_number": profile.whatsapp_number,
+        "active": profile.active,
+        "custom_values": profile_custom_values(db, profile.profile_type, profile.id),
+        "fields": profile_field_config(db, profile.profile_type),
+    }
+
+
+@router.get("/admin/role-profiles")
+def role_profiles(
+    user: UserAccount = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    require_admin(user)
+    profile_users = db.scalars(
+        select(UserAccount)
+        .where(UserAccount.role.in_(ROLE_PROFILE_TYPES))
+        .order_by(UserAccount.role, UserAccount.name)
+    ).all()
+    profiles = []
+    for account in profile_users:
+        profile = ensure_role_profile(db, account, account.role)
+        profiles.append(serialize_role_profile(db, profile, account))
+    db.commit()
+    return {"profile_types": role_profile_type_options(), "profiles": profiles}
+
+
+@router.post("/admin/role-profiles/{user_id}/{profile_type}")
+def save_role_profile(
+    user_id: int,
+    profile_type: str,
+    payload: RoleProfileUpdate,
+    user: UserAccount = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_admin(user)
+    if profile_type not in ROLE_PROFILE_TYPES:
+        raise HTTPException(status_code=400, detail="Unknown profile type")
+    account = db.get(UserAccount, user_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="User not found")
+    if account.role != profile_type:
+        raise HTTPException(status_code=400, detail="Profile type must match user role")
+    profile = ensure_role_profile(db, account, profile_type)
+    profile.employee_code = payload.employee_code.strip()
+    profile.department = payload.department.strip()
+    profile.designation = payload.designation.strip()
+    profile.subjects = payload.subjects.strip()
+    profile.assigned_class = payload.assigned_class.strip()
+    profile.assigned_section = payload.assigned_section.strip()
+    profile.occupation = payload.occupation.strip()
+    profile.relationship_type = payload.relationship_type.strip()
+    profile.preferred_language = payload.preferred_language.strip()
+    profile.whatsapp_number = payload.whatsapp_number.strip()
+    profile.active = payload.active
+    db.flush()
+    save_profile_custom_values(db, profile_type, profile.id, payload.custom_values)
+    db.commit()
+    return {"status": "saved", "profile": serialize_role_profile(db, profile, account)}
 
 
 @router.post("/admin/users")

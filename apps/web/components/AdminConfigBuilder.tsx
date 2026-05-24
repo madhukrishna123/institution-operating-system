@@ -78,6 +78,36 @@ type ProfileFieldGroup = {
   fields: ProfileField[];
 };
 
+type RoleProfileField = ProfileField & {
+  value?: unknown;
+};
+
+type RoleProfile = {
+  id: number;
+  user_id: number;
+  user_name: string;
+  user_email: string;
+  profile_type: string;
+  employee_code?: string | null;
+  department?: string | null;
+  designation?: string | null;
+  subjects?: string | null;
+  assigned_class?: string | null;
+  assigned_section?: string | null;
+  occupation?: string | null;
+  relationship_type?: string | null;
+  preferred_language?: string | null;
+  whatsapp_number?: string | null;
+  active: boolean;
+  custom_values?: Record<string, unknown> | null;
+  fields?: RoleProfileField[];
+};
+
+type RoleProfilesResponse = {
+  profile_types: { label: string; value: string }[];
+  profiles: RoleProfile[];
+};
+
 type NewField = {
   key: string;
   label: string;
@@ -95,6 +125,23 @@ type UserForm = {
   password: string;
   active: boolean;
   linked_student_id: string;
+};
+
+type RoleProfileForm = {
+  user_id: string;
+  profile_type: string;
+  employee_code: string;
+  department: string;
+  designation: string;
+  subjects: string;
+  assigned_class: string;
+  assigned_section: string;
+  occupation: string;
+  relationship_type: string;
+  preferred_language: string;
+  whatsapp_number: string;
+  active: boolean;
+  custom_values: Record<string, string>;
 };
 
 type OptionDraft = {
@@ -120,6 +167,23 @@ const emptyUser: UserForm = {
   linked_student_id: ""
 };
 
+const emptyRoleProfile: RoleProfileForm = {
+  user_id: "",
+  profile_type: "teacher",
+  employee_code: "",
+  department: "",
+  designation: "",
+  subjects: "",
+  assigned_class: "",
+  assigned_section: "",
+  occupation: "",
+  relationship_type: "",
+  preferred_language: "",
+  whatsapp_number: "",
+  active: true,
+  custom_values: {}
+};
+
 const inputClass =
   "mt-1 h-10 w-full rounded-2xl border border-[#e6d6bf] bg-white/80 px-3 text-sm outline-none transition focus:border-[#173b45] focus:ring-4 focus:ring-[#d6ece8]";
 
@@ -128,6 +192,7 @@ const cardClass = "rounded-[24px] border border-white/75 bg-white/65 p-5 shadow-
 const tabs = [
   { key: "institution", label: "Institution" },
   { key: "users", label: "Users" },
+  { key: "profiles", label: "Profiles" },
   { key: "master-data", label: "Master Data" },
   { key: "profile-fields", label: "Profile Fields" },
   { key: "modules", label: "Modules" }
@@ -144,11 +209,16 @@ export function AdminConfigBuilder({
   const [modules, setModules] = useState<ModuleConfig[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [userOptions, setUserOptions] = useState<UserOptions>({ roles: [], students: [] });
+  const [roleProfiles, setRoleProfiles] = useState<RoleProfilesResponse>({
+    profile_types: [],
+    profiles: []
+  });
   const [masterData, setMasterData] = useState<MasterDataSet[]>([]);
   const [profileFields, setProfileFields] = useState<ProfileFieldGroup[]>([]);
   const [activeProfileType, setActiveProfileType] = useState("student");
   const [newField, setNewField] = useState<NewField>(emptyField);
   const [userForm, setUserForm] = useState<UserForm>(emptyUser);
+  const [roleProfileForm, setRoleProfileForm] = useState<RoleProfileForm>(emptyRoleProfile);
   const [passwordReset, setPasswordReset] = useState<Record<number, string>>({});
   const [optionDrafts, setOptionDrafts] = useState<Record<string, OptionDraft>>({});
   const [activeTab, setActiveTab] = useState("institution");
@@ -163,6 +233,7 @@ export function AdminConfigBuilder({
         nextModules,
         nextUsers,
         nextUserOptions,
+        nextRoleProfiles,
         nextMasterData,
         nextProfileFields
       ] =
@@ -171,6 +242,7 @@ export function AdminConfigBuilder({
           apiGet<ModuleConfig[]>("/api/config/modules", token),
           apiGet<AdminUser[]>("/api/admin/users", token),
           apiGet<UserOptions>("/api/admin/user-options", token),
+          apiGet<RoleProfilesResponse>("/api/admin/role-profiles", token),
           apiGet<MasterDataSet[]>("/api/admin/master-data", token),
           apiGet<ProfileFieldGroup[]>("/api/config/profile-fields", token)
         ]);
@@ -178,6 +250,13 @@ export function AdminConfigBuilder({
       setModules(nextModules);
       setUsers(nextUsers);
       setUserOptions(nextUserOptions);
+      setRoleProfiles(nextRoleProfiles);
+      setRoleProfileForm((current) => {
+        const profileTypeValues = nextRoleProfiles.profile_types.map((type) => type.value);
+        return current.profile_type && profileTypeValues.includes(current.profile_type)
+          ? current
+          : { ...current, profile_type: nextRoleProfiles.profile_types[0]?.value ?? "teacher" };
+      });
       setMasterData(nextMasterData);
       setProfileFields(nextProfileFields);
       setError("");
@@ -271,6 +350,79 @@ export function AdminConfigBuilder({
       await apiPost(`/api/admin/users/${user.id}/reset-password`, { password }, token);
       setPasswordReset((current) => ({ ...current, [user.id]: "" }));
       setSaved("Password reset");
+    });
+  }
+
+  function editRoleProfile(profile: RoleProfile) {
+    const valuesFromFields =
+      profile.fields?.reduce<Record<string, string>>((values, field) => {
+        const key = field.field_key || field.key;
+        if (key && field.value !== undefined && field.value !== null) {
+          values[key] = String(field.value);
+        }
+        return values;
+      }, {}) ?? {};
+
+    setRoleProfileForm({
+      user_id: String(profile.user_id),
+      profile_type: profile.profile_type,
+      employee_code: profile.employee_code ?? "",
+      department: profile.department ?? "",
+      designation: profile.designation ?? "",
+      subjects: profile.subjects ?? "",
+      assigned_class: profile.assigned_class ?? "",
+      assigned_section: profile.assigned_section ?? "",
+      occupation: profile.occupation ?? "",
+      relationship_type: profile.relationship_type ?? "",
+      preferred_language: profile.preferred_language ?? "",
+      whatsapp_number: profile.whatsapp_number ?? "",
+      active: profile.active,
+      custom_values: {
+        ...valuesFromFields,
+        ...Object.fromEntries(
+          Object.entries(profile.custom_values ?? {}).map(([key, value]) => [
+            key,
+            value === undefined || value === null ? "" : String(value)
+          ])
+        )
+      }
+    });
+    setActiveTab("profiles");
+  }
+
+  async function saveRoleProfile() {
+    if (!roleProfileForm.user_id || !roleProfileForm.profile_type) {
+      setSaved("");
+      setError("Select a user and profile type first");
+      return;
+    }
+
+    await runSave("role-profile", async () => {
+      const payload = {
+        employee_code: roleProfileForm.employee_code.trim(),
+        department: roleProfileForm.department.trim(),
+        designation: roleProfileForm.designation.trim(),
+        subjects: roleProfileForm.subjects.trim(),
+        assigned_class: roleProfileForm.assigned_class.trim(),
+        assigned_section: roleProfileForm.assigned_section.trim(),
+        occupation: roleProfileForm.occupation.trim(),
+        relationship_type: roleProfileForm.relationship_type.trim(),
+        preferred_language: roleProfileForm.preferred_language.trim(),
+        whatsapp_number: roleProfileForm.whatsapp_number.trim(),
+        active: roleProfileForm.active,
+        custom_values: roleProfileForm.custom_values
+      };
+      await apiPost(
+        `/api/admin/role-profiles/${roleProfileForm.user_id}/${roleProfileForm.profile_type}`,
+        payload,
+        token
+      );
+      setSaved("Profile saved");
+      setRoleProfileForm({
+        ...emptyRoleProfile,
+        profile_type: roleProfiles.profile_types[0]?.value ?? "teacher"
+      });
+      await load();
     });
   }
 
@@ -471,6 +623,17 @@ export function AdminConfigBuilder({
   const studentsModule = modules.find((module) => module.key === "students");
   const needsStudentLink = userForm.role === "student" || userForm.role === "parent";
   const activeProfileGroup = profileFields.find((group) => group.profile_type === activeProfileType);
+  const roleProfileTypeValues = roleProfiles.profile_types.map((type) => type.value);
+  const roleProfileUsers = users.filter(
+    (user) => user.role !== "student" && roleProfileTypeValues.includes(user.role)
+  );
+  const selectedRoleProfileFields =
+    profileFields
+      .find((group) => group.profile_type === roleProfileForm.profile_type)
+      ?.fields.filter((field) => field.active && field.visible) ?? [];
+  const selectedRoleProfileLabel =
+    roleProfiles.profile_types.find((type) => type.value === roleProfileForm.profile_type)?.label ??
+    "Profile";
 
   return (
     <section className="space-y-5">
@@ -642,6 +805,310 @@ export function AdminConfigBuilder({
                         {user.active ? "Disable" : "Enable"}
                       </button>
                     </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </article>
+      ) : null}
+
+      {activeTab === "profiles" ? (
+      <article className={cardClass}>
+        <h2 className="text-lg font-semibold">Profiles</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Manage teacher, parent, staff, finance, and admin details for users who are not student logins.
+        </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <label className="text-sm font-medium text-slate-700">
+            User
+            <select
+              className={inputClass}
+              value={roleProfileForm.user_id}
+              onChange={(event) => {
+                const selectedUser = roleProfileUsers.find(
+                  (user) => String(user.id) === event.target.value
+                );
+                const existingProfile = roleProfiles.profiles.find(
+                  (profile) => String(profile.user_id) === event.target.value
+                );
+                if (existingProfile) {
+                  editRoleProfile(existingProfile);
+                  return;
+                }
+                setRoleProfileForm({
+                  ...emptyRoleProfile,
+                  user_id: event.target.value,
+                  profile_type: selectedUser?.role ?? roleProfileForm.profile_type
+                });
+              }}
+            >
+              <option value="">Select user</option>
+              {roleProfileUsers.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name} - {user.email}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            Profile Type
+            <select
+              className={inputClass}
+              disabled={Boolean(roleProfileForm.user_id)}
+              value={roleProfileForm.profile_type}
+              onChange={(event) =>
+                setRoleProfileForm({
+                  ...roleProfileForm,
+                  profile_type: event.target.value,
+                  custom_values: {}
+                })
+              }
+            >
+              {roleProfiles.profile_types.map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 self-end text-sm font-medium text-slate-700">
+            <input
+              checked={roleProfileForm.active}
+              type="checkbox"
+              onChange={(event) =>
+                setRoleProfileForm({ ...roleProfileForm, active: event.target.checked })
+              }
+            />
+            Active
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            Employee Code
+            <input
+              className={inputClass}
+              value={roleProfileForm.employee_code}
+              onChange={(event) =>
+                setRoleProfileForm({ ...roleProfileForm, employee_code: event.target.value })
+              }
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            Department
+            <input
+              className={inputClass}
+              value={roleProfileForm.department}
+              onChange={(event) =>
+                setRoleProfileForm({ ...roleProfileForm, department: event.target.value })
+              }
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            Designation
+            <input
+              className={inputClass}
+              value={roleProfileForm.designation}
+              onChange={(event) =>
+                setRoleProfileForm({ ...roleProfileForm, designation: event.target.value })
+              }
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            Subjects
+            <input
+              className={inputClass}
+              value={roleProfileForm.subjects}
+              onChange={(event) =>
+                setRoleProfileForm({ ...roleProfileForm, subjects: event.target.value })
+              }
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            Assigned Class
+            <input
+              className={inputClass}
+              value={roleProfileForm.assigned_class}
+              onChange={(event) =>
+                setRoleProfileForm({ ...roleProfileForm, assigned_class: event.target.value })
+              }
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            Assigned Section
+            <input
+              className={inputClass}
+              value={roleProfileForm.assigned_section}
+              onChange={(event) =>
+                setRoleProfileForm({ ...roleProfileForm, assigned_section: event.target.value })
+              }
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            Occupation
+            <input
+              className={inputClass}
+              value={roleProfileForm.occupation}
+              onChange={(event) =>
+                setRoleProfileForm({ ...roleProfileForm, occupation: event.target.value })
+              }
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            Relationship Type
+            <input
+              className={inputClass}
+              value={roleProfileForm.relationship_type}
+              onChange={(event) =>
+                setRoleProfileForm({ ...roleProfileForm, relationship_type: event.target.value })
+              }
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            Preferred Language
+            <input
+              className={inputClass}
+              value={roleProfileForm.preferred_language}
+              onChange={(event) =>
+                setRoleProfileForm({ ...roleProfileForm, preferred_language: event.target.value })
+              }
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            WhatsApp Number
+            <input
+              className={inputClass}
+              value={roleProfileForm.whatsapp_number}
+              onChange={(event) =>
+                setRoleProfileForm({ ...roleProfileForm, whatsapp_number: event.target.value })
+              }
+            />
+          </label>
+        </div>
+
+        {selectedRoleProfileFields.length ? (
+          <div className="mt-5 rounded-2xl border border-[#eadcc9] bg-white/55 p-4">
+            <h3 className="font-semibold">{selectedRoleProfileLabel} Custom Fields</h3>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              {selectedRoleProfileFields.map((field) => {
+                const key = field.field_key || field.key;
+                return (
+                  <label className="text-sm font-medium text-slate-700" key={field.id}>
+                    {field.label}
+                    {field.field_type === "select" ? (
+                      <select
+                        className={inputClass}
+                        value={roleProfileForm.custom_values[key] ?? ""}
+                        onChange={(event) =>
+                          setRoleProfileForm({
+                            ...roleProfileForm,
+                            custom_values: {
+                              ...roleProfileForm.custom_values,
+                              [key]: event.target.value
+                            }
+                          })
+                        }
+                      >
+                        <option value="">Select</option>
+                        {field.options?.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        className={inputClass}
+                        type={field.field_type === "number" ? "number" : field.field_type === "date" ? "date" : "text"}
+                        value={roleProfileForm.custom_values[key] ?? ""}
+                        onChange={(event) =>
+                          setRoleProfileForm({
+                            ...roleProfileForm,
+                            custom_values: {
+                              ...roleProfileForm.custom_values,
+                              [key]: event.target.value
+                            }
+                          })
+                        }
+                      />
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-4 flex gap-2">
+          <button
+            className="rounded-2xl bg-[#173b45] px-4 py-2.5 text-sm font-semibold text-white"
+            disabled={savingAction === "role-profile"}
+            onClick={saveRoleProfile}
+          >
+            {savingAction === "role-profile" ? "Saving..." : "Save Profile"}
+          </button>
+          <button
+            className="rounded-2xl border border-[#e6d6bf] bg-white/70 px-4 py-2.5 text-sm font-semibold text-slate-700"
+            onClick={() =>
+              setRoleProfileForm({
+                ...emptyRoleProfile,
+                profile_type: roleProfiles.profile_types[0]?.value ?? "teacher"
+              })
+            }
+          >
+            Clear
+          </button>
+        </div>
+
+        <div className="mt-5 overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs uppercase tracking-[0.12em] text-slate-500">
+              <tr>
+                <th className="py-2">User</th>
+                <th>Profile</th>
+                <th>Work Details</th>
+                <th>Contact</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {roleProfiles.profiles.length === 0 ? (
+                <tr className="border-t border-[#eadcc9]">
+                  <td className="py-4 text-sm text-slate-500" colSpan={6}>
+                    No role profiles configured yet.
+                  </td>
+                </tr>
+              ) : null}
+              {roleProfiles.profiles.map((profile) => (
+                <tr className="border-t border-[#eadcc9]" key={profile.id}>
+                  <td className="py-3">
+                    <p className="font-semibold">{profile.user_name}</p>
+                    <p className="text-xs text-slate-500">{profile.user_email}</p>
+                  </td>
+                  <td>
+                    {roleProfiles.profile_types.find((type) => type.value === profile.profile_type)
+                      ?.label ?? profile.profile_type}
+                  </td>
+                  <td>
+                    <p>{profile.designation || profile.department || "-"}</p>
+                    <p className="text-xs text-slate-500">
+                      {[profile.employee_code, profile.assigned_class, profile.assigned_section]
+                        .filter(Boolean)
+                        .join(" / ") || "-"}
+                    </p>
+                  </td>
+                  <td>
+                    <p>{profile.whatsapp_number || "-"}</p>
+                    <p className="text-xs text-slate-500">{profile.preferred_language || ""}</p>
+                  </td>
+                  <td>{profile.active ? "Active" : "Disabled"}</td>
+                  <td>
+                    <button
+                      className="rounded-xl border border-[#d9b980] px-3 py-1.5 text-xs font-semibold text-[#70470f]"
+                      onClick={() => editRoleProfile(profile)}
+                    >
+                      Edit
+                    </button>
                   </td>
                 </tr>
               ))}

@@ -105,6 +105,25 @@ class ProfileFieldValue(Base):
     value: Mapped[str] = mapped_column(Text, default="")
 
 
+class RoleProfile(Base):
+    __tablename__ = "role_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user_accounts.id"), index=True)
+    profile_type: Mapped[str] = mapped_column(String(40), index=True)
+    employee_code: Mapped[str] = mapped_column(String(80), default="")
+    department: Mapped[str] = mapped_column(String(120), default="")
+    designation: Mapped[str] = mapped_column(String(120), default="")
+    subjects: Mapped[str] = mapped_column(String(240), default="")
+    assigned_class: Mapped[str] = mapped_column(String(80), default="")
+    assigned_section: Mapped[str] = mapped_column(String(80), default="")
+    occupation: Mapped[str] = mapped_column(String(120), default="")
+    relationship_type: Mapped[str] = mapped_column(String(80), default="")
+    preferred_language: Mapped[str] = mapped_column(String(80), default="")
+    whatsapp_number: Mapped[str] = mapped_column(String(40), default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 class MasterDataSet(Base):
     __tablename__ = "master_data_sets"
 

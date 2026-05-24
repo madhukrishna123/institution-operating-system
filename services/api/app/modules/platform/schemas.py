@@ -100,3 +100,18 @@ class ProfileFieldUpdate(BaseModel):
     order: int = 0
     active: bool = True
     options: list[str] = []
+
+
+class RoleProfileUpdate(BaseModel):
+    employee_code: str = ""
+    department: str = ""
+    designation: str = ""
+    subjects: str = ""
+    assigned_class: str = ""
+    assigned_section: str = ""
+    occupation: str = ""
+    relationship_type: str = ""
+    preferred_language: str = ""
+    whatsapp_number: str = ""
+    active: bool = True
+    custom_values: dict[str, str] = {}

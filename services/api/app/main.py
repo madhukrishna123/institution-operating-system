@@ -23,6 +23,7 @@ from app.modules.platform.models import (
     ProfileFieldDefinition,
     ProfileFieldOption,
     ProfileFieldValue,
+    RoleProfile,
     RoleNavigation,
     UserAccount,
     WorkflowDefinition,

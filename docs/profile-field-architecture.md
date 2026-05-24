@@ -28,6 +28,30 @@ Examples of custom profile fields:
 ## Data Model
 
 ```text
+user_accounts
+- id
+- email
+- name
+- role
+- linked_student_id
+- active
+
+role_profiles
+- id
+- user_id
+- profile_type
+- employee_code
+- department
+- designation
+- subjects
+- assigned_class
+- assigned_section
+- occupation
+- relationship_type
+- preferred_language
+- whatsapp_number
+- active
+
 profile_field_definitions
 - id
 - profile_type
@@ -67,6 +91,8 @@ admin
 ```
 
 `profile_id` points to the profile record for that profile type. In the current incremental implementation, `student` profile values point to the existing `students.id`. When full person/profile tables are introduced, `profile_id` will point to `student_profiles.id`, `teacher_profiles.id`, and so on.
+
+For non-student users, `role_profiles` is the current role-specific profile record. A teacher user has one teacher profile, a parent user has one parent profile, and so on. This gives admins a simple place to manage role attributes now, while keeping a clean path toward a full person/profile model later.
 
 ## Query Behavior
 
@@ -112,9 +138,40 @@ Configuration -> Profile Fields
 They choose a profile type, then add fields for that profile. This keeps the UI simple:
 
 - Student fields affect student records.
-- Teacher fields are stored for future teacher profile screens.
-- Parent fields are stored for future parent profile screens.
+- Teacher fields appear in `Configuration -> Profiles` for teacher users.
+- Parent fields appear in `Configuration -> Profiles` for parent users.
+- Staff, finance, and admin fields also appear in `Configuration -> Profiles`.
+
+Admins manage role profile values under:
+
+```text
+Configuration -> Profiles
+```
+
+Selecting a user automatically uses that user's role profile type, so the admin does not need to understand the database model.
 
 ## Migration Note
 
 The previous module-level student custom fields are migrated into `student` profile fields on startup. Existing values are copied from `module_record_values` into `profile_field_values`, so local work is preserved.
+
+## Future Person/Profile Step
+
+The next architecture step is to split human identity from login and role assignment:
+
+```text
+people
+- id
+- full_name
+- phone
+- email
+
+person_roles
+- person_id
+- role
+
+student_profiles / teacher_profiles / parent_profiles
+- person_id
+- role-specific fixed fields
+```
+
+That step should be done when the product needs one person to hold multiple roles, for example a teacher who is also a parent. Until then, the current `user_accounts` plus `role_profiles` model is simpler for the end user and enough for the working product.
