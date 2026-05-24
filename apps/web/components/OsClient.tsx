@@ -27,7 +27,8 @@ type SeedUser = {
   email: string;
   name: string;
   role: string;
-  password: string;
+  password?: string;
+  can_quick_login?: boolean;
 };
 
 type Workspace = {
@@ -326,18 +327,37 @@ export function OsClient({
                     <button
                       className="group flex w-full items-center justify-between rounded-2xl border border-white bg-white/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#d9b980] hover:bg-white hover:shadow-md"
                       key={user.email}
-                      onClick={() => login(user.email, user.password ?? "password")}
+                      onClick={() => {
+                        if (user.can_quick_login) {
+                          login(user.email, user.password ?? "password");
+                          return;
+                        }
+                        setLoginEmail(user.email);
+                        setLoginPassword("");
+                        setError("Enter the password created for this user.");
+                      }}
                       disabled={isLoggingIn}
                     >
                       <span>
                         <span className="block font-medium">{user.name}</span>
-                        <span className="text-sm text-slate-500">{roleLabel(user.role)}</span>
+                        <span className="text-sm text-slate-500">
+                          {roleLabel(user.role)} {user.can_quick_login ? "" : " - password required"}
+                        </span>
                       </span>
                       <ChevronRight className="text-[#9a6a28] transition group-hover:translate-x-0.5" size={18} />
                     </button>
                   ))}
                 </div>
-              ) : (
+              ) : null}
+              {seedUsers.length > 0 ? (
+                <div className="mt-5 border-t border-[#eadcc9] pt-5">
+                  <p className="text-sm font-semibold text-slate-700">Sign in with password</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Use this for users created by admin.
+                  </p>
+                </div>
+              ) : null}
+              {seedUsers.length === 0 || loginEmail ? (
                 <form className="mt-4 space-y-3" onSubmit={submitEmailLogin}>
                   <label className="block text-sm font-medium text-slate-700">
                     Email
@@ -368,7 +388,7 @@ export function OsClient({
                     {isLoggingIn ? "Signing in..." : "Sign in"}
                   </button>
                 </form>
-              )}
+              ) : null}
             </div>
           </div>
         </section>

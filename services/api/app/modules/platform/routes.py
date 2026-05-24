@@ -477,7 +477,8 @@ def seed_users(db: Session = Depends(get_db)) -> list[dict]:
             "email": user.email,
             "name": user.name,
             "role": user.role,
-            "password": "password",
+            "password": "password" if verify_password("password", user.password) else "",
+            "can_quick_login": verify_password("password", user.password),
         }
         for user in users
     ]
