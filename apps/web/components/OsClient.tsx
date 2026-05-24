@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Bell,
   BookOpen,
   CalendarDays,
   ChevronRight,
@@ -9,7 +10,9 @@ import {
   GraduationCap,
   LayoutDashboard,
   LogOut,
+  Search,
   Settings,
+  Sparkles,
   Users
 } from "lucide-react";
 import type { FormEvent } from "react";
@@ -374,17 +377,29 @@ export function OsClient({
   }
 
   return (
-    <main className="min-h-screen text-[#1f2933]">
-      <div className="grid min-h-screen lg:grid-cols-[280px_1fr]">
-        <aside className="border-r border-white/70 bg-white/55 p-4 backdrop-blur-xl">
-          <div className="mb-6 rounded-[24px] bg-[#173b45] p-4 text-white shadow-[0_20px_60px_rgba(23,59,69,0.20)]">
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#f6d39b]">Institution OS</p>
-            <p className="mt-2 text-lg font-semibold leading-6">{workspace.institution.name}</p>
+    <main className="min-h-screen bg-[#f4efe6] text-[#172127]">
+      <div className="grid min-h-screen lg:grid-cols-[292px_1fr]">
+        <aside className="border-r border-white/10 bg-[#102f37] p-4 text-white shadow-[18px_0_70px_rgba(16,47,55,0.20)]">
+          <div className="mb-5 rounded-[28px] border border-white/10 bg-white/[0.07] p-4 shadow-2xl shadow-black/10 backdrop-blur">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f5c36f] font-bold text-[#102f37]">
+                OS
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#f5c36f]">Institution OS</p>
+                <p className="mt-1 truncate text-lg font-semibold leading-6">{workspace.institution.name}</p>
+              </div>
+            </div>
+            <div className="mt-4 rounded-2xl border border-white/10 bg-[#0b252b] px-3 py-2 text-xs leading-5 text-white/70">
+              Clean operations for students, attendance, fees, and configuration.
+            </div>
           </div>
           <nav className="space-y-1">
             <button
               className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-semibold transition ${
-                selectedModule === "workspace" ? "bg-white text-[#173b45] shadow-sm" : "text-slate-600 hover:bg-white/60 hover:text-slate-950"
+                selectedModule === "workspace"
+                  ? "bg-[#fff8ed] text-[#102f37] shadow-sm"
+                  : "text-white/70 hover:bg-white/10 hover:text-white"
               }`}
               onClick={() => setSelectedModule("workspace")}
             >
@@ -396,7 +411,9 @@ export function OsClient({
               return (
                 <button
                   className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-semibold transition ${
-                    selectedModule === item.module_key ? "bg-white text-[#173b45] shadow-sm" : "text-slate-600 hover:bg-white/60 hover:text-slate-950"
+                    selectedModule === item.module_key
+                      ? "bg-[#fff8ed] text-[#102f37] shadow-sm"
+                      : "text-white/70 hover:bg-white/10 hover:text-white"
                   }`}
                   key={item.module_key}
                   onClick={() => setSelectedModule(item.module_key)}
@@ -407,26 +424,40 @@ export function OsClient({
               );
             })}
           </nav>
+          <div className="mt-6 rounded-[24px] border border-white/10 bg-white/[0.07] p-4 text-sm text-white/75">
+            <div className="mb-3 flex items-center gap-2 text-[#f5c36f]">
+              <Sparkles size={16} />
+              <span className="font-semibold">Next step</span>
+            </div>
+            Build people, role assignments, and cleaner parent-teacher linking from this foundation.
+          </div>
         </aside>
 
         <section className="min-w-0">
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/70 bg-white/45 px-6 py-4 backdrop-blur-xl">
+          <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-white/70 bg-[#f9f4ec]/80 px-5 py-4 backdrop-blur-xl md:px-7">
             <div>
-              <p className="text-sm font-medium text-[#9a6a28]">{roleLabel(session.role)}</p>
+              <p className="text-sm font-semibold text-[#9a6a28]">{roleLabel(session.role)}</p>
               <h1 className="text-2xl font-semibold tracking-tight">
                 {selectedModule === "workspace"
                   ? "Dashboard"
                   : selectedModule === "configuration"
                     ? "Configuration"
-                    : modulePayload?.module.label ?? "Module"}
+                  : modulePayload?.module.label ?? "Module"}
               </h1>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="rounded-2xl border border-white bg-white/65 px-3 py-2 text-sm text-slate-600 shadow-sm">
+            <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
+              <div className="hidden min-w-[260px] items-center gap-2 rounded-2xl border border-white bg-white/70 px-3 py-2 text-sm text-slate-500 shadow-sm md:flex">
+                <Search size={16} />
+                <span>Search students, fees, attendance...</span>
+              </div>
+              <button className="rounded-2xl border border-white bg-white/70 p-2.5 text-slate-600 shadow-sm transition hover:bg-white">
+                <Bell size={17} />
+              </button>
+              <div className="rounded-2xl border border-white bg-white/70 px-3 py-2 text-sm text-slate-600 shadow-sm">
                 {session.user.name}
               </div>
               <button
-                className="flex items-center gap-2 rounded-2xl border border-white bg-white/65 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-white"
+                className="flex items-center gap-2 rounded-2xl bg-[#102f37] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0b252b]"
                 onClick={logout}
               >
                 <LogOut size={16} />
@@ -435,7 +466,7 @@ export function OsClient({
             </div>
           </header>
 
-          <div className="p-5 md:p-7">
+          <div className="p-4 md:p-7">
             {error ? (
               <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                 {error}
@@ -449,24 +480,48 @@ export function OsClient({
 
             {selectedModule === "workspace" ? (
               <section className="space-y-5">
-                <div className="rounded-[28px] border border-white/75 bg-white/60 p-6 shadow-sm backdrop-blur">
-                  <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9a6a28]">Today workspace</p>
-                  <h2 className="mt-2 text-3xl font-semibold tracking-tight">Everything important, gently organized.</h2>
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-                    Start with the working modules below. As the product grows, new intelligence can appear here only when it is useful.
-                  </p>
+                <div className="overflow-hidden rounded-[32px] border border-white/20 bg-[#102f37] text-white shadow-[0_28px_90px_rgba(16,47,55,0.22)]">
+                  <div className="grid gap-6 p-6 md:grid-cols-[1fr_280px] md:p-8">
+                    <div>
+                      <p className="text-sm font-semibold uppercase tracking-[0.20em] text-[#f5c36f]">Today workspace</p>
+                      <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight md:text-4xl">
+                        A calm command center for the day.
+                      </h2>
+                      <p className="mt-4 max-w-2xl text-sm leading-6 text-white/72">
+                        Start from the working modules. Records, approvals, and configuration stay simple, while the architecture is ready for richer roles.
+                      </p>
+                    </div>
+                    <div className="rounded-[26px] border border-white/10 bg-white/[0.08] p-4 backdrop-blur">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/55">System health</p>
+                      <div className="mt-4 grid grid-cols-2 gap-3">
+                        <div className="rounded-2xl bg-white/[0.08] p-3">
+                          <p className="text-2xl font-semibold">{navigation.length}</p>
+                          <p className="text-xs text-white/60">Modules</p>
+                        </div>
+                        <div className="rounded-2xl bg-white/[0.08] p-3">
+                          <p className="text-2xl font-semibold">{agentWork.filter((item) => item.status === "admin_review").length}</p>
+                          <p className="text-xs text-white/60">Pending</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div className="grid gap-4 md:grid-cols-3">
                   {navigation.map((item) => {
                     const Icon = icons[item.icon as keyof typeof icons] ?? LayoutDashboard;
                     return (
                       <button
-                        className="rounded-[24px] border border-white/75 bg-white/65 p-5 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-[#d9b980] hover:bg-white hover:shadow-md"
+                        className="group rounded-[28px] border border-white/80 bg-white/75 p-5 text-left shadow-sm backdrop-blur transition hover:-translate-y-1 hover:border-[#f5c36f] hover:bg-white hover:shadow-xl"
                         key={item.module_key}
                         onClick={() => setSelectedModule(item.module_key)}
                       >
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#e7f2ef] text-[#173b45]">
-                          <Icon size={21} />
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#102f37] text-[#f5c36f] transition group-hover:scale-105">
+                            <Icon size={21} />
+                          </div>
+                          <span className="rounded-full border border-[#eadcc9] bg-[#fff8ed] px-3 py-1 text-xs font-semibold text-[#805719]">
+                            Open
+                          </span>
                         </div>
                         <h2 className="mt-4 text-lg font-semibold">{item.label}</h2>
                         <p className="mt-2 text-sm leading-6 text-slate-500">
@@ -477,7 +532,7 @@ export function OsClient({
                   })}
                 </div>
                 <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
-                  <div className="rounded-[24px] border border-white/75 bg-white/60 p-5 shadow-sm backdrop-blur">
+                  <div className="rounded-[28px] border border-white/80 bg-white/75 p-5 shadow-sm backdrop-blur">
                     <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9a6a28]">Pending items</p>
                     <h2 className="mt-2 text-xl font-semibold">Needs admin review</h2>
                     <div className="mt-4 space-y-3">
