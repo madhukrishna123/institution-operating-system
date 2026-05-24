@@ -421,10 +421,33 @@ def can_create_record(module_key: str, role: str) -> bool:
     return allowed.get(module_key, False)
 
 
+def can_edit_record(module_key: str, role: str) -> bool:
+    allowed = {
+        "students": role in ["teacher", "admin", "super_admin"],
+        "attendance": role in ["teacher", "admin", "super_admin"],
+        "fees": role in ["finance", "admin", "super_admin"],
+    }
+    return allowed.get(module_key, False)
+
+
+def can_delete_record(module_key: str, role: str) -> bool:
+    allowed = {
+        "students": role in ["admin", "super_admin"],
+        "attendance": role in ["teacher", "admin", "super_admin"],
+        "fees": role in ["finance", "admin", "super_admin"],
+    }
+    return allowed.get(module_key, False)
+
+
 def ensure_record_permission(module_key: str, role: str, action: str) -> None:
-    if not can_create_record(module_key, role):
+    checks = {
+        "create": can_create_record,
+        "edit": can_edit_record,
+        "delete": can_delete_record,
+    }
+    if not checks.get(action, can_create_record)(module_key, role):
         labels = {
-            "students": "Only admins can manage students",
+            "students": "Teachers can only edit student class and section. Admin role is required for other student changes.",
             "attendance": "Attendance requires teacher/admin role",
             "fees": "Fees require finance/admin role",
         }
@@ -1337,6 +1360,12 @@ def module_records(
     else:
         records = []
 
+    record_form_fields = create_fields(db, module_key)
+    if module_key == "students" and user.role == "teacher":
+        record_form_fields = [
+            field for field in record_form_fields if field["key"] in {"class_name", "section"}
+        ]
+
     return {
         "module": {
             "key": module.key,
@@ -1345,11 +1374,11 @@ def module_records(
             "accent": module.accent,
         },
         "fields": fields,
-        "create_fields": create_fields(db, module_key),
+        "create_fields": record_form_fields,
         "records": records,
         "can_create": can_create_record(module_key, user.role),
-        "can_edit": can_create_record(module_key, user.role),
-        "can_delete": can_create_record(module_key, user.role),
+        "can_edit": can_edit_record(module_key, user.role),
+        "can_delete": can_delete_record(module_key, user.role),
     }
 
 
@@ -1425,6 +1454,11 @@ def update_module_record(
         student = db.get(Student, record_id)
         if not student:
             raise HTTPException(status_code=404, detail="Student not found")
+        if user.role == "teacher":
+            student.class_name = str(payload.get("class_name") or student.class_name).strip()
+            student.section = str(payload.get("section") or student.section).strip()
+            db.commit()
+            return {"status": "updated", "id": record_id}
         admission_number = str(payload.get("admission_number") or "").strip()
         student_fields = create_fields(db, "students")
         validate_required_fields(student_fields, payload)
