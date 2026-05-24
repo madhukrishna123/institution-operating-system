@@ -103,6 +103,14 @@ const inputClass =
 
 const cardClass = "rounded-[24px] border border-white/75 bg-white/65 p-5 shadow-sm backdrop-blur";
 
+const tabs = [
+  { key: "institution", label: "Institution" },
+  { key: "users", label: "Users" },
+  { key: "master-data", label: "Master Data" },
+  { key: "student-fields", label: "Student Fields" },
+  { key: "modules", label: "Modules" }
+];
+
 export function AdminConfigBuilder({
   token,
   onSaved
@@ -119,6 +127,7 @@ export function AdminConfigBuilder({
   const [userForm, setUserForm] = useState<UserForm>(emptyUser);
   const [passwordReset, setPasswordReset] = useState<Record<number, string>>({});
   const [optionDrafts, setOptionDrafts] = useState<Record<string, OptionDraft>>({});
+  const [activeTab, setActiveTab] = useState("institution");
   const [savingAction, setSavingAction] = useState("");
   const [saved, setSaved] = useState("");
   const [error, setError] = useState("");
@@ -356,6 +365,28 @@ export function AdminConfigBuilder({
 
   return (
     <section className="space-y-5">
+      <div className="rounded-[28px] border border-white/75 bg-white/55 p-3 shadow-sm backdrop-blur">
+        <div className="flex flex-wrap gap-2">
+          {tabs.map((tab) => (
+            <button
+              className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                activeTab === tab.key
+                  ? "bg-[#173b45] text-white shadow-sm"
+                  : "text-slate-600 hover:bg-white/70 hover:text-slate-950"
+              }`}
+              key={tab.key}
+              onClick={() => {
+                setActiveTab(tab.key);
+                setError("");
+                setSaved("");
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {error}
@@ -367,6 +398,7 @@ export function AdminConfigBuilder({
         </div>
       ) : null}
 
+      {activeTab === "institution" ? (
       <article className={cardClass}>
         <h2 className="text-lg font-semibold">Institution Settings</h2>
         <div className="mt-4 grid gap-4 md:grid-cols-[1fr_180px_auto]">
@@ -403,9 +435,14 @@ export function AdminConfigBuilder({
           </button>
         </div>
       </article>
+      ) : null}
 
+      {activeTab === "users" ? (
       <article className={cardClass}>
         <h2 className="text-lg font-semibold">Users</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Add staff, parent, and student logins. Student and parent users must be linked to a student record.
+        </p>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <label className="text-sm font-medium text-slate-700">
             Name
@@ -503,9 +540,14 @@ export function AdminConfigBuilder({
           </table>
         </div>
       </article>
+      ) : null}
 
+      {activeTab === "master-data" ? (
       <article className={cardClass}>
         <h2 className="text-lg font-semibold">Master Data LOV</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Configure dropdown values used by Students, Attendance, and Fees.
+        </p>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {masterData.map((set) => {
             const draft = optionDrafts[set.key] ?? { label: "", value: "" };
@@ -539,7 +581,9 @@ export function AdminConfigBuilder({
           })}
         </div>
       </article>
+      ) : null}
 
+      {activeTab === "student-fields" ? (
       <article className={cardClass}>
         <h2 className="text-lg font-semibold">Add Student Field</h2>
         <div className="mt-4 grid gap-4 md:grid-cols-3">
@@ -579,7 +623,9 @@ export function AdminConfigBuilder({
           </button>
         </div>
       </article>
+      ) : null}
 
+      {activeTab === "student-fields" ? (
       <article className={cardClass}>
         <h2 className="text-lg font-semibold">Student Field Configuration</h2>
         <div className="mt-4 space-y-3">
@@ -614,9 +660,14 @@ export function AdminConfigBuilder({
           </button>
         ) : null}
       </article>
+      ) : null}
 
+      {activeTab === "modules" ? (
       <article className={cardClass}>
         <h2 className="text-lg font-semibold">Visible Modules</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Keep only complete, usable modules visible to users.
+        </p>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {modules
             .filter((module) => ["students", "attendance", "fees", "configuration"].includes(module.key))
@@ -638,6 +689,7 @@ export function AdminConfigBuilder({
             ))}
         </div>
       </article>
+      ) : null}
     </section>
   );
 }
