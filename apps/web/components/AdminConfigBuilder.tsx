@@ -639,6 +639,37 @@ export function AdminConfigBuilder({
   const selectedRoleProfileLabel =
     roleProfiles.profile_types.find((type) => type.value === roleProfileForm.profile_type)?.label ??
     "Profile";
+  const roleProfileCoreFields: {
+    key: keyof RoleProfileForm;
+    label: string;
+    type?: string;
+  }[] =
+    roleProfileForm.profile_type === "parent"
+      ? [
+          { key: "relationship_type", label: "Relationship Type" },
+          { key: "occupation", label: "Occupation" },
+          { key: "preferred_language", label: "Preferred Language" },
+          { key: "contact_email", label: "Contact Email", type: "email" },
+          { key: "whatsapp_number", label: "WhatsApp Number" }
+        ]
+      : roleProfileForm.profile_type === "teacher"
+        ? [
+            { key: "employee_code", label: "Employee Code" },
+            { key: "department", label: "Department" },
+            { key: "designation", label: "Designation" },
+            { key: "subjects", label: "Subjects" },
+            { key: "assigned_class", label: "Assigned Class" },
+            { key: "assigned_section", label: "Assigned Section" },
+            { key: "contact_email", label: "Contact Email", type: "email" },
+            { key: "whatsapp_number", label: "WhatsApp Number" }
+          ]
+        : [
+            { key: "employee_code", label: "Employee Code" },
+            { key: "department", label: "Department" },
+            { key: "designation", label: "Designation" },
+            { key: "contact_email", label: "Contact Email", type: "email" },
+            { key: "whatsapp_number", label: "WhatsApp Number" }
+          ];
 
   return (
     <section className="space-y-5">
@@ -823,7 +854,7 @@ export function AdminConfigBuilder({
       <article className={cardClass}>
         <h2 className="text-lg font-semibold">Profiles</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Manage teacher, parent, staff, finance, and admin details for users who are not student logins.
+          Manage role-specific details. Student profile details live in Students; this tab is for parent, teacher, staff, finance, and admin users.
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <label className="text-sm font-medium text-slate-700">
@@ -888,117 +919,22 @@ export function AdminConfigBuilder({
             />
             Active
           </label>
-          <label className="text-sm font-medium text-slate-700">
-            Employee Code
-            <input
-              className={inputClass}
-              value={roleProfileForm.employee_code}
-              onChange={(event) =>
-                setRoleProfileForm({ ...roleProfileForm, employee_code: event.target.value })
-              }
-            />
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Department
-            <input
-              className={inputClass}
-              value={roleProfileForm.department}
-              onChange={(event) =>
-                setRoleProfileForm({ ...roleProfileForm, department: event.target.value })
-              }
-            />
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Designation
-            <input
-              className={inputClass}
-              value={roleProfileForm.designation}
-              onChange={(event) =>
-                setRoleProfileForm({ ...roleProfileForm, designation: event.target.value })
-              }
-            />
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Subjects
-            <input
-              className={inputClass}
-              value={roleProfileForm.subjects}
-              onChange={(event) =>
-                setRoleProfileForm({ ...roleProfileForm, subjects: event.target.value })
-              }
-            />
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Assigned Class
-            <input
-              className={inputClass}
-              value={roleProfileForm.assigned_class}
-              onChange={(event) =>
-                setRoleProfileForm({ ...roleProfileForm, assigned_class: event.target.value })
-              }
-            />
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Assigned Section
-            <input
-              className={inputClass}
-              value={roleProfileForm.assigned_section}
-              onChange={(event) =>
-                setRoleProfileForm({ ...roleProfileForm, assigned_section: event.target.value })
-              }
-            />
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Occupation
-            <input
-              className={inputClass}
-              value={roleProfileForm.occupation}
-              onChange={(event) =>
-                setRoleProfileForm({ ...roleProfileForm, occupation: event.target.value })
-              }
-            />
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Relationship Type
-            <input
-              className={inputClass}
-              value={roleProfileForm.relationship_type}
-              onChange={(event) =>
-                setRoleProfileForm({ ...roleProfileForm, relationship_type: event.target.value })
-              }
-            />
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Preferred Language
-            <input
-              className={inputClass}
-              value={roleProfileForm.preferred_language}
-              onChange={(event) =>
-                setRoleProfileForm({ ...roleProfileForm, preferred_language: event.target.value })
-              }
-            />
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Contact Email
-            <input
-              className={inputClass}
-              type="email"
-              value={roleProfileForm.contact_email}
-              onChange={(event) =>
-                setRoleProfileForm({ ...roleProfileForm, contact_email: event.target.value })
-              }
-            />
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            WhatsApp Number
-            <input
-              className={inputClass}
-              value={roleProfileForm.whatsapp_number}
-              onChange={(event) =>
-                setRoleProfileForm({ ...roleProfileForm, whatsapp_number: event.target.value })
-              }
-            />
-          </label>
+          {roleProfileCoreFields.map((field) => (
+            <label className="text-sm font-medium text-slate-700" key={field.key}>
+              {field.label}
+              <input
+                className={inputClass}
+                type={field.type ?? "text"}
+                value={String(roleProfileForm[field.key] ?? "")}
+                onChange={(event) =>
+                  setRoleProfileForm({
+                    ...roleProfileForm,
+                    [field.key]: event.target.value
+                  })
+                }
+              />
+            </label>
+          ))}
         </div>
 
         {selectedRoleProfileFields.length ? (
