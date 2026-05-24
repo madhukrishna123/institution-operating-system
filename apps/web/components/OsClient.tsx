@@ -4,7 +4,6 @@ import {
   Bell,
   BookOpen,
   CalendarDays,
-  ChevronRight,
   CircleDollarSign,
   ClipboardCheck,
   GraduationCap,
@@ -18,7 +17,6 @@ import {
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { AdminConfigBuilder } from "./AdminConfigBuilder";
-import { AgentWorkQueue } from "./AgentWorkQueue";
 import { ConfigurableForm } from "./ConfigurableForm";
 import { ConfigurableListView } from "./ConfigurableListView";
 import { ApiSession, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
@@ -109,6 +107,7 @@ export function OsClient({
   const [modulePayload, setModulePayload] = useState<ModulePayload | null>(null);
   const [agentWork, setAgentWork] = useState<AgentWork[]>([]);
   const [editingRecord, setEditingRecord] = useState<Record<string, string | number | boolean | null> | null>(null);
+  const [selectedLoginEmail, setSelectedLoginEmail] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -117,6 +116,7 @@ export function OsClient({
 
   const token = session?.token ?? "";
   const canConfigure = session?.role === "admin" || session?.role === "super_admin";
+  const selectedLoginUser = seedUsers.find((user) => user.email === selectedLoginEmail);
 
   const navigation = useMemo(
     () => (workspace?.navigation ?? []).filter((item) => workingModules.has(item.module_key)),
@@ -335,31 +335,37 @@ export function OsClient({
                 </div>
               ) : null}
               {seedUsers.length > 0 ? (
-                <div className="mt-4 space-y-2">
-                  {seedUsers.map((user) => (
-                    <button
-                      className="group flex w-full items-center justify-between rounded-2xl border border-white bg-white/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#d9b980] hover:bg-white hover:shadow-md"
-                      key={user.email}
-                      onClick={() => {
-                        if (user.can_quick_login) {
-                          login(user.email, user.password ?? "password");
-                          return;
-                        }
-                        setLoginEmail(user.email);
+                <div className="mt-4 space-y-3">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Account
+                    <select
+                      className="mt-1 h-11 w-full rounded-2xl border border-[#e6d6bf] bg-white/80 px-3 text-slate-950 outline-none transition focus:border-[#173b45] focus:ring-4 focus:ring-[#d6ece8]"
+                      value={selectedLoginEmail}
+                      onChange={(event) => {
+                        const nextUser = seedUsers.find((user) => user.email === event.target.value);
+                        setSelectedLoginEmail(event.target.value);
+                        setLoginEmail(nextUser?.email ?? "");
                         setLoginPassword("");
-                        setError("Enter the password created for this user.");
+                        setError(nextUser && !nextUser.can_quick_login ? "Enter the password created for this user." : "");
                       }}
-                      disabled={isLoggingIn}
                     >
-                      <span>
-                        <span className="block font-medium">{user.name}</span>
-                        <span className="text-sm text-slate-500">
-                          {roleLabel(user.role)} {user.can_quick_login ? "" : " - password required"}
-                        </span>
-                      </span>
-                      <ChevronRight className="text-[#9a6a28] transition group-hover:translate-x-0.5" size={18} />
+                      <option value="">Select an account</option>
+                      {seedUsers.filter((user) => user.can_quick_login).map((user) => (
+                        <option key={user.email} value={user.email}>
+                          {roleLabel(user.role)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {selectedLoginUser?.can_quick_login ? (
+                    <button
+                      className="flex w-full items-center justify-center rounded-2xl bg-[#173b45] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0f2c34] disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={isLoggingIn}
+                      onClick={() => login(selectedLoginUser.email, selectedLoginUser.password ?? "password")}
+                    >
+                      {isLoggingIn ? "Signing in..." : `Continue as ${roleLabel(selectedLoginUser.role)}`}
                     </button>
-                  ))}
+                  ) : null}
                 </div>
               ) : null}
               {seedUsers.length > 0 ? (
@@ -564,44 +570,30 @@ export function OsClient({
                     );
                   })}
                 </div>
-                <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
+                <div className="grid gap-4 md:grid-cols-3">
                   <div className="rounded-[28px] border border-white/80 bg-white/75 p-5 shadow-sm backdrop-blur">
-                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9a6a28]">Pending items</p>
-                    <h2 className="mt-2 text-xl font-semibold">Needs admin review</h2>
-                    <div className="mt-4 space-y-3">
-                      {agentWork.filter((item) => item.status === "admin_review").length === 0 ? (
-                        <div className="rounded-2xl border border-[#eadcc9] bg-white/55 p-4 text-sm text-slate-500">
-                          No pending approval items right now.
-                        </div>
-                      ) : (
-                        agentWork
-                          .filter((item) => item.status === "admin_review")
-                          .map((item) => (
-                            <article className="rounded-2xl border border-[#eadcc9] bg-white/65 p-4" key={item.id}>
-                              <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#9a6a28]">{item.agent}</p>
-                                  <h3 className="mt-1 font-semibold">{item.title}</h3>
-                                </div>
-                                <span className="rounded-full bg-[#f7dfb8] px-3 py-1 text-xs font-semibold text-[#70470f]">
-                                  {item.status}
-                                </span>
-                              </div>
-                              <p className="mt-3 text-sm leading-6 text-slate-600">{item.recommendation}</p>
-                            </article>
-                          ))
-                      )}
-                    </div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9a6a28]">Approvals</p>
+                    <p className="mt-3 text-3xl font-semibold">
+                      {agentWork.filter((item) => item.status === "admin_review").length}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      Items needing review. Details stay inside the workflow module, not on the landing dashboard.
+                    </p>
                   </div>
-                  <AgentWorkQueue
-                    items={agentWork}
-                    token={token}
-                    canApprove={canConfigure}
-                    onChange={async () => {
-                      await loadAgentWork();
-                      await loadWorkspace();
-                    }}
-                  />
+                  <div className="rounded-[28px] border border-white/80 bg-white/75 p-5 shadow-sm backdrop-blur">
+                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9a6a28]">Workspace</p>
+                    <p className="mt-3 text-3xl font-semibold">{roleLabel(session.role)}</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      Navigation is filtered for the current role.
+                    </p>
+                  </div>
+                  <div className="rounded-[28px] border border-white/80 bg-white/75 p-5 shadow-sm backdrop-blur">
+                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9a6a28]">Setup</p>
+                    <p className="mt-3 text-3xl font-semibold">{navigation.length}</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      Active working modules are ready from the left navigation.
+                    </p>
+                  </div>
                 </div>
               </section>
             ) : selectedModule === "configuration" && canConfigure ? (
