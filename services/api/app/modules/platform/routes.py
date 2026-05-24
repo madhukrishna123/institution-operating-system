@@ -1363,7 +1363,9 @@ def module_records(
     record_form_fields = create_fields(db, module_key)
     if module_key == "students" and user.role == "teacher":
         record_form_fields = [
-            field for field in record_form_fields if field["key"] in {"class_name", "section"}
+            field
+            for field in record_form_fields
+            if field["key"] in {"class_name", "section"} or field.get("source") == "profile_custom"
         ]
 
     return {
@@ -1455,8 +1457,15 @@ def update_module_record(
         if not student:
             raise HTTPException(status_code=404, detail="Student not found")
         if user.role == "teacher":
+            teacher_fields = [
+                field
+                for field in create_fields(db, "students")
+                if field["key"] in {"class_name", "section"} or field.get("source") == "profile_custom"
+            ]
+            validate_required_fields(teacher_fields, payload)
             student.class_name = str(payload.get("class_name") or student.class_name).strip()
             student.section = str(payload.get("section") or student.section).strip()
+            save_custom_values(db, "students", student.id, teacher_fields, payload)
             db.commit()
             return {"status": "updated", "id": record_id}
         admission_number = str(payload.get("admission_number") or "").strip()
