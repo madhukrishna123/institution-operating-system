@@ -96,6 +96,8 @@ def field_config(db: Session, module_key: str) -> list[dict]:
     query = select(ModuleField).where(ModuleField.module_key == module_key, ModuleField.visible == True)
     if module_key == "students":
         query = query.where(ModuleField.key.in_(CORE_STUDENT_FIELDS))
+    if module_key == "teachers":
+        query = query.where(ModuleField.key.in_(CORE_TEACHER_FIELDS))
     fields = db.scalars(query.order_by(ModuleField.order)).all()
     configured_fields = [
         with_field_options(db, {
@@ -118,6 +120,8 @@ def field_config(db: Session, module_key: str) -> list[dict]:
             configured_fields.insert(3, {"key": "section", "label": "Section", "type": "text", "visible": True, "required": False, "order": 3})
     if module_key == "students":
         configured_fields.extend(profile_field_config(db, "student"))
+    if module_key == "teachers":
+        configured_fields.extend(profile_field_config(db, "teacher"))
     return configured_fields
 
 
@@ -125,10 +129,18 @@ def with_field_options(db: Session, field: dict) -> dict:
     option_sets = {
         "class_name": master_options(db, "classes"),
         "section": master_options(db, "sections"),
+        "assignment_class": master_options(db, "classes"),
+        "assignment_section": master_options(db, "sections"),
+        "assignment_subject": master_options(db, "subjects"),
+        "assignment_role": master_options(db, "teacher_assignment_roles"),
         "status": [
             {"label": "Active", "value": "active"},
             {"label": "Inactive", "value": "inactive"},
             {"label": "Alumni", "value": "alumni"},
+        ],
+        "active": [
+            {"label": "Active", "value": "active"},
+            {"label": "Disabled", "value": "disabled"},
         ],
     }
     if field["key"] in option_sets:
@@ -164,6 +176,18 @@ CORE_STUDENT_FIELDS = {
     "section",
     "guardian_name",
     "status",
+}
+CORE_TEACHER_FIELDS = {
+    "name",
+    "email",
+    "employee_code",
+    "department",
+    "designation",
+    "subjects",
+    "contact_email",
+    "whatsapp_number",
+    "active",
+    "assignment_summary",
 }
 
 
@@ -253,6 +277,8 @@ def all_field_config(db: Session, module_key: str) -> list[dict]:
     query = select(ModuleField).where(ModuleField.module_key == module_key)
     if module_key == "students":
         query = query.where(ModuleField.key.in_(CORE_STUDENT_FIELDS))
+    if module_key == "teachers":
+        query = query.where(ModuleField.key.in_(CORE_TEACHER_FIELDS))
     fields = db.scalars(query.order_by(ModuleField.order)).all()
     return [
         with_field_options(db, {
@@ -265,7 +291,9 @@ def all_field_config(db: Session, module_key: str) -> list[dict]:
             "order": field.order,
         }) | ({"options": field_options(db, field.id)} if field.field_type == "select" else {})
         for field in fields
-    ] + (profile_field_config(db, "student", include_inactive=True) if module_key == "students" else [])
+    ] + (profile_field_config(db, "student", include_inactive=True) if module_key == "students" else []) + (
+        profile_field_config(db, "teacher", include_inactive=True) if module_key == "teachers" else []
+    )
 
 
 def custom_values(db: Session, module_key: str, record_id: int) -> dict[str, str]:
@@ -418,12 +446,28 @@ def create_fields(db: Session, module_key: str) -> list[dict]:
             field
             for field in field_config(db, module_key)
         ]
+    if module_key == "teachers":
+        base_fields = [
+            field
+            for field in field_config(db, module_key)
+            if field["key"] != "assignment_summary"
+        ]
+        base_keys = {field["key"] for field in base_fields}
+        extra_fields = [
+            {"key": "password", "label": "Password", "type": "text", "required": False},
+            {"key": "assignment_class", "label": "Assigned Class", "type": "select", "required": False, "options": master_options(db, "classes")},
+            {"key": "assignment_section", "label": "Assigned Section", "type": "select", "required": False, "options": master_options(db, "sections")},
+            {"key": "assignment_subject", "label": "Subject", "type": "select", "required": False, "options": master_options(db, "subjects")},
+            {"key": "assignment_role", "label": "Assignment Role", "type": "select", "required": False, "options": master_options(db, "teacher_assignment_roles")},
+        ]
+        return base_fields + [field for field in extra_fields if field["key"] not in base_keys]
     return []
 
 
 def can_create_record(module_key: str, role: str) -> bool:
     allowed = {
         "students": role in ["admin", "super_admin"],
+        "teachers": role in ["admin", "super_admin"],
         "attendance": role in ["teacher", "admin", "super_admin"],
         "fees": role in ["finance", "admin", "super_admin"],
     }
@@ -433,6 +477,7 @@ def can_create_record(module_key: str, role: str) -> bool:
 def can_edit_record(module_key: str, role: str) -> bool:
     allowed = {
         "students": role in ["teacher", "admin", "super_admin"],
+        "teachers": role in ["admin", "super_admin"],
         "attendance": role in ["teacher", "admin", "super_admin"],
         "fees": role in ["finance", "admin", "super_admin"],
     }
@@ -442,6 +487,7 @@ def can_edit_record(module_key: str, role: str) -> bool:
 def can_delete_record(module_key: str, role: str) -> bool:
     allowed = {
         "students": role in ["admin", "super_admin"],
+        "teachers": role in ["admin", "super_admin"],
         "attendance": role in ["teacher", "admin", "super_admin"],
         "fees": role in ["finance", "admin", "super_admin"],
     }
@@ -457,6 +503,7 @@ def ensure_record_permission(module_key: str, role: str, action: str) -> None:
     if not checks.get(action, can_create_record)(module_key, role):
         labels = {
             "students": "Teachers can only edit student class and section. Admin role is required for other student changes.",
+            "teachers": "Teachers require admin role",
             "attendance": "Attendance requires teacher/admin role",
             "fees": "Fees require finance/admin role",
         }
@@ -790,6 +837,76 @@ def serialize_teacher_assignment(row: TeacherAssignment, db: Session) -> dict:
         "subject": row.subject,
         "assignment_role": row.assignment_role,
         "active": row.active,
+    }
+
+
+def teacher_assignments_summary(db: Session, teacher_user_id: int) -> str:
+    rows = db.scalars(
+        select(TeacherAssignment)
+        .where(TeacherAssignment.teacher_user_id == teacher_user_id)
+        .order_by(TeacherAssignment.class_name, TeacherAssignment.section, TeacherAssignment.subject)
+    ).all()
+    return "; ".join(
+        [
+            f"{row.class_name}-{row.section}"
+            + (f" {row.subject}" if row.subject else "")
+            + f" ({row.assignment_role})"
+            for row in rows
+            if row.active
+        ]
+    )
+
+
+def primary_teacher_assignment(db: Session, teacher_user_id: int) -> TeacherAssignment | None:
+    return db.scalar(
+        select(TeacherAssignment)
+        .where(TeacherAssignment.teacher_user_id == teacher_user_id)
+        .order_by(TeacherAssignment.id)
+        .limit(1)
+    )
+
+
+def save_primary_teacher_assignment(db: Session, teacher_user_id: int, payload: dict) -> None:
+    class_name = str(payload.get("assignment_class") or "").strip()
+    section = str(payload.get("assignment_section") or "").strip()
+    subject = str(payload.get("assignment_subject") or "").strip()
+    assignment_role = str(payload.get("assignment_role") or "Subject Teacher").strip() or "Subject Teacher"
+    if not class_name and not section and not subject:
+        return
+    if not class_name or not section:
+        raise HTTPException(status_code=400, detail="Assignment class and section are required together")
+    row = primary_teacher_assignment(db, teacher_user_id)
+    if not row:
+        row = TeacherAssignment(teacher_user_id=teacher_user_id)
+        db.add(row)
+    row.class_name = class_name
+    row.section = section
+    row.subject = subject
+    row.assignment_role = assignment_role
+    row.active = True
+
+
+def serialize_teacher_record(db: Session, account: UserAccount) -> dict:
+    profile = ensure_role_profile(db, account, "teacher")
+    assignment = primary_teacher_assignment(db, account.id)
+    custom_values = profile_custom_values(db, "teacher", profile.id)
+    return {
+        "id": account.id,
+        "name": account.name,
+        "email": account.email,
+        "employee_code": profile.employee_code,
+        "department": profile.department,
+        "designation": profile.designation,
+        "subjects": profile.subjects,
+        "contact_email": profile.contact_email,
+        "whatsapp_number": profile.whatsapp_number,
+        "active": "active" if account.active else "disabled",
+        "assignment_class": assignment.class_name if assignment else "",
+        "assignment_section": assignment.section if assignment else "",
+        "assignment_subject": assignment.subject if assignment else "",
+        "assignment_role": assignment.assignment_role if assignment else "Subject Teacher",
+        "assignment_summary": teacher_assignments_summary(db, account.id) or "-",
+        **custom_values,
     }
 
 
@@ -1509,6 +1626,14 @@ def module_records(
             }
             for item in db.scalars(query).all()
         ]
+    elif module_key == "teachers":
+        ensure_record_permission(module_key, user.role, "edit")
+        teachers = db.scalars(
+            select(UserAccount)
+            .where(UserAccount.role == "teacher")
+            .order_by(UserAccount.name)
+        ).all()
+        records = [serialize_teacher_record(db, teacher) for teacher in teachers]
     elif module_key == "attendance":
         rows = db.execute(
             select(AttendanceRecord, Student.full_name)
@@ -1653,6 +1778,43 @@ def create_module_record(
         save_custom_values(db, "students", record.id, student_fields, payload)
         db.commit()
         return {"status": "created", "id": record.id}
+    if module_key == "teachers":
+        ensure_record_permission(module_key, user.role, "create")
+        teacher_fields = create_fields(db, "teachers")
+        validate_required_fields(teacher_fields, payload)
+        name = str(payload.get("name") or "").strip()
+        email = str(payload.get("email") or "").strip().lower()
+        password = str(payload.get("password") or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Teacher name is required")
+        if not email:
+            raise HTTPException(status_code=400, detail="Login email is required")
+        if len(password) < 8:
+            raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+        if db.scalar(select(UserAccount).where(UserAccount.email == email)):
+            raise HTTPException(status_code=409, detail="Login email already exists")
+        account = UserAccount(
+            institution_id=user.institution_id,
+            name=name,
+            email=email,
+            role="teacher",
+            password=hash_password(password),
+            active=str(payload.get("active") or "active") == "active",
+        )
+        db.add(account)
+        db.flush()
+        profile = ensure_role_profile(db, account, "teacher")
+        profile.employee_code = str(payload.get("employee_code") or "").strip()
+        profile.department = str(payload.get("department") or "").strip()
+        profile.designation = str(payload.get("designation") or "").strip()
+        profile.subjects = str(payload.get("subjects") or "").strip()
+        profile.contact_email = str(payload.get("contact_email") or "").strip().lower()
+        profile.whatsapp_number = str(payload.get("whatsapp_number") or "").strip()
+        profile.active = account.active
+        save_profile_custom_values(db, "teacher", profile.id, payload)
+        save_primary_teacher_assignment(db, account.id, payload)
+        db.commit()
+        return {"status": "created", "id": account.id}
     if module_key == "attendance":
         return mark_attendance(payload, user, db)
     if module_key == "fees":
@@ -1727,6 +1889,41 @@ def update_module_record(
         student.guardian_name = str(payload.get("guardian_name") or "").strip()
         student.status = str(payload.get("status") or "active").strip() or "active"
         save_custom_values(db, "students", student.id, student_fields, payload)
+    elif module_key == "teachers":
+        account = db.get(UserAccount, record_id)
+        if not account or account.role != "teacher":
+            raise HTTPException(status_code=404, detail="Teacher not found")
+        teacher_fields = create_fields(db, "teachers")
+        validate_required_fields(teacher_fields, payload)
+        name = str(payload.get("name") or "").strip()
+        email = str(payload.get("email") or "").strip().lower()
+        if not name:
+            raise HTTPException(status_code=400, detail="Teacher name is required")
+        if not email:
+            raise HTTPException(status_code=400, detail="Login email is required")
+        duplicate = db.scalar(
+            select(UserAccount).where(UserAccount.email == email, UserAccount.id != record_id)
+        )
+        if duplicate:
+            raise HTTPException(status_code=409, detail="Login email already exists")
+        password = str(payload.get("password") or "").strip()
+        if password:
+            if len(password) < 8:
+                raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+            account.password = hash_password(password)
+        account.name = name
+        account.email = email
+        account.active = str(payload.get("active") or "active") == "active"
+        profile = ensure_role_profile(db, account, "teacher")
+        profile.employee_code = str(payload.get("employee_code") or "").strip()
+        profile.department = str(payload.get("department") or "").strip()
+        profile.designation = str(payload.get("designation") or "").strip()
+        profile.subjects = str(payload.get("subjects") or "").strip()
+        profile.contact_email = str(payload.get("contact_email") or "").strip().lower()
+        profile.whatsapp_number = str(payload.get("whatsapp_number") or "").strip()
+        profile.active = account.active
+        save_profile_custom_values(db, "teacher", profile.id, payload)
+        save_primary_teacher_assignment(db, account.id, payload)
     elif module_key == "attendance":
         attendance = db.get(AttendanceRecord, record_id)
         if not attendance:
@@ -1797,6 +1994,24 @@ def delete_module_record(
             {UserAccount.linked_student_id: None}
         )
         db.delete(student)
+    elif module_key == "teachers":
+        account = db.get(UserAccount, record_id)
+        if not account or account.role != "teacher":
+            raise HTTPException(status_code=404, detail="Teacher not found")
+        profiles = db.scalars(
+            select(RoleProfile).where(
+                RoleProfile.user_id == account.id,
+                RoleProfile.profile_type == "teacher",
+            )
+        ).all()
+        for profile in profiles:
+            db.query(ProfileFieldValue).filter(
+                ProfileFieldValue.profile_type == "teacher",
+                ProfileFieldValue.profile_id == profile.id,
+            ).delete()
+            db.delete(profile)
+        db.query(TeacherAssignment).filter(TeacherAssignment.teacher_user_id == account.id).delete()
+        db.delete(account)
     elif module_key == "attendance":
         attendance = db.get(AttendanceRecord, record_id)
         if not attendance:

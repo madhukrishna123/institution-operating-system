@@ -44,6 +44,9 @@ ROLES = [
 def seed_platform(db: Session) -> None:
     existing_institution = db.scalar(select(Institution).limit(1))
     if existing_institution:
+        ensure_core_modules(db)
+        ensure_module_fields(db)
+        ensure_role_navigation(db)
         ensure_master_data(db)
         ensure_profile_field_metadata(db)
         ensure_role_profiles(db)
@@ -123,17 +126,6 @@ def seed_platform(db: Session) -> None:
     ensure_role_profiles(db)
     ensure_teacher_assignments(db)
 
-    modules = [
-        ("students", "Students", "Identity, guardians, classes, and learner context.", "GraduationCap", "cyan"),
-        ("attendance", "Attendance", "Daily marking, risk detection, and interventions.", "ClipboardCheck", "emerald"),
-        ("fees", "Fees", "Invoices, balances, dues, and payment follow-up.", "CircleDollarSign", "amber"),
-        ("exams", "Exams", "Assessments, marks, grades, and intervention triggers.", "BookOpen", "violet"),
-        ("timetable", "Timetable", "Classes, teachers, rooms, and schedule conflicts.", "CalendarDays", "sky"),
-        ("staff", "Staff", "Employee records, roles, leave, and duty planning.", "Users", "rose"),
-        ("messages", "Messages", "Parent communication, multilingual drafts, and approvals.", "MessageSquareText", "teal"),
-        ("analytics", "Analytics", "Operational intelligence and weekly briefs.", "Activity", "blue"),
-        ("configuration", "Configuration", "Metadata builder for modules, fields, roles, and workflows.", "Settings", "slate"),
-    ]
     db.add_all(
         [
             ConfigModule(
@@ -143,34 +135,10 @@ def seed_platform(db: Session) -> None:
                 icon=icon,
                 accent=accent,
             )
-            for key, label, description, icon, accent in modules
+            for key, label, description, icon, accent in core_modules()
         ]
     )
 
-    fields = {
-        "students": [
-            ("admission_number", "Admission No.", "text", True, True),
-            ("full_name", "Full Name", "text", True, True),
-            ("class_name", "Class", "text", True, True),
-            ("section", "Section", "text", True, True),
-            ("guardian_name", "Guardian", "text", True, True),
-            ("status", "Status", "text", True, False),
-        ],
-        "attendance": [
-            ("attendance_date", "Date", "date", True, True),
-            ("student_name", "Student", "text", True, False),
-            ("status", "Status", "select", True, True),
-            ("note", "Note", "text", True, False),
-        ],
-        "fees": [
-            ("student_name", "Student", "text", True, False),
-            ("fee_name", "Fee", "text", True, True),
-            ("amount", "Amount", "number", True, True),
-            ("paid_amount", "Paid", "number", True, False),
-            ("balance", "Balance", "number", True, False),
-            ("status", "Status", "text", True, False),
-        ],
-    }
     db.add_all(
         [
             ModuleField(
@@ -182,30 +150,21 @@ def seed_platform(db: Session) -> None:
                 required=required,
                 order=index,
             )
-            for module_key, module_fields in fields.items()
+            for module_key, module_fields in core_module_fields().items()
             for index, (key, label, field_type, visible, required) in enumerate(module_fields)
         ]
     )
 
-    role_modules = {
-        "super_admin": ["students", "attendance", "fees", "analytics", "configuration"],
-        "admin": ["students", "attendance", "fees", "messages", "analytics", "configuration"],
-        "teacher": ["students", "attendance", "exams", "timetable", "messages"],
-        "student": ["attendance", "timetable", "exams", "messages"],
-        "parent": ["attendance", "fees", "messages"],
-        "finance": ["students", "fees", "messages", "analytics"],
-        "hr": ["staff", "timetable", "messages", "analytics"],
-    }
     db.add_all(
         [
             RoleNavigation(
                 role=role,
                 module_key=module_key,
-                label=next(label for key, label, *_ in modules if key == module_key),
+                label=next(label for key, label, *_ in core_modules() if key == module_key),
                 href=f"/modules/{module_key}",
                 order=index,
             )
-            for role, module_keys in role_modules.items()
+            for role, module_keys in core_role_modules().items()
             for index, module_key in enumerate(module_keys)
         ]
     )
@@ -265,6 +224,135 @@ def seed_platform(db: Session) -> None:
             ]
         )
     db.commit()
+
+
+def core_modules() -> list[tuple[str, str, str, str, str]]:
+    return [
+        ("students", "Students", "Identity, guardians, classes, and learner context.", "GraduationCap", "cyan"),
+        ("teachers", "Teachers", "Teacher profiles, login access, and class or subject assignments.", "Users", "rose"),
+        ("attendance", "Attendance", "Daily marking, risk detection, and interventions.", "ClipboardCheck", "emerald"),
+        ("fees", "Fees", "Invoices, balances, dues, and payment follow-up.", "CircleDollarSign", "amber"),
+        ("exams", "Exams", "Assessments, marks, grades, and intervention triggers.", "BookOpen", "violet"),
+        ("timetable", "Timetable", "Classes, teachers, rooms, and schedule conflicts.", "CalendarDays", "sky"),
+        ("staff", "Staff", "Employee records, roles, leave, and duty planning.", "Users", "rose"),
+        ("messages", "Messages", "Parent communication, multilingual drafts, and approvals.", "MessageSquareText", "teal"),
+        ("analytics", "Analytics", "Operational intelligence and weekly briefs.", "Activity", "blue"),
+        ("configuration", "Configuration", "Metadata builder for modules, fields, roles, and workflows.", "Settings", "slate"),
+    ]
+
+
+def core_module_fields() -> dict[str, list[tuple[str, str, str, bool, bool]]]:
+    return {
+        "students": [
+            ("admission_number", "Admission No.", "text", True, True),
+            ("full_name", "Full Name", "text", True, True),
+            ("class_name", "Class", "text", True, True),
+            ("section", "Section", "text", True, True),
+            ("guardian_name", "Guardian", "text", True, True),
+            ("status", "Status", "text", True, False),
+        ],
+        "teachers": [
+            ("name", "Teacher Name", "text", True, True),
+            ("email", "Login Email", "text", True, True),
+            ("employee_code", "Employee Code", "text", True, False),
+            ("department", "Department", "text", True, False),
+            ("designation", "Designation", "text", True, False),
+            ("subjects", "Subjects", "text", True, False),
+            ("assignment_summary", "Assignments", "text", True, False),
+            ("active", "Status", "text", True, False),
+        ],
+        "attendance": [
+            ("attendance_date", "Date", "date", True, True),
+            ("student_name", "Student", "text", True, False),
+            ("status", "Status", "select", True, True),
+            ("note", "Note", "text", True, False),
+        ],
+        "fees": [
+            ("student_name", "Student", "text", True, False),
+            ("fee_name", "Fee", "text", True, True),
+            ("amount", "Amount", "number", True, True),
+            ("paid_amount", "Paid", "number", True, False),
+            ("balance", "Balance", "number", True, False),
+            ("status", "Status", "text", True, False),
+        ],
+    }
+
+
+def core_role_modules() -> dict[str, list[str]]:
+    return {
+        "super_admin": ["students", "teachers", "attendance", "fees", "analytics", "configuration"],
+        "admin": ["students", "teachers", "attendance", "fees", "messages", "analytics", "configuration"],
+        "teacher": ["students", "attendance", "exams", "timetable", "messages"],
+        "student": ["attendance", "timetable", "exams", "messages"],
+        "parent": ["attendance", "fees", "messages"],
+        "finance": ["students", "fees", "messages", "analytics"],
+        "hr": ["staff", "timetable", "messages", "analytics"],
+    }
+
+
+def ensure_core_modules(db: Session) -> None:
+    for key, label, description, icon, accent in core_modules():
+        module = db.scalar(select(ConfigModule).where(ConfigModule.key == key))
+        if not module:
+            db.add(
+                ConfigModule(
+                    key=key,
+                    label=label,
+                    description=description,
+                    icon=icon,
+                    accent=accent,
+                )
+            )
+
+
+def ensure_module_fields(db: Session) -> None:
+    for module_key, fields in core_module_fields().items():
+        existing_keys = {
+            key
+            for key in db.scalars(
+                select(ModuleField.key).where(ModuleField.module_key == module_key)
+            ).all()
+        }
+        for index, (key, label, field_type, visible, required) in enumerate(fields):
+            if key in existing_keys:
+                continue
+            db.add(
+                ModuleField(
+                    module_key=module_key,
+                    key=key,
+                    label=label,
+                    field_type=field_type,
+                    visible=visible,
+                    required=required,
+                    order=index,
+                )
+            )
+
+
+def ensure_role_navigation(db: Session) -> None:
+    module_labels = {key: label for key, label, *_ in core_modules()}
+    for role, module_keys in core_role_modules().items():
+        existing = {
+            row.module_key: row
+            for row in db.scalars(
+                select(RoleNavigation).where(RoleNavigation.role == role)
+            ).all()
+        }
+        for index, module_key in enumerate(module_keys):
+            if module_key in existing:
+                existing[module_key].label = module_labels[module_key]
+                existing[module_key].href = f"/modules/{module_key}"
+                existing[module_key].order = index
+                continue
+            db.add(
+                RoleNavigation(
+                    role=role,
+                    module_key=module_key,
+                    label=module_labels[module_key],
+                    href=f"/modules/{module_key}",
+                    order=index,
+                )
+            )
 
 
 def ensure_bootstrap_admin(db: Session, institution: Institution) -> None:

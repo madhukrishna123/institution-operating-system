@@ -239,7 +239,6 @@ const tabs = [
   { key: "institution", label: "Institution" },
   { key: "users", label: "Users" },
   { key: "profiles", label: "Profiles" },
-  { key: "teacher-assignments", label: "Teacher Assignments" },
   { key: "master-data", label: "Master Data" },
   { key: "profile-fields", label: "Profile Fields" },
   { key: "modules", label: "Modules" }
@@ -962,7 +961,7 @@ export function AdminConfigBuilder({
       <article className={cardClass}>
         <h2 className="text-lg font-semibold">Profiles</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Manage role-specific details. Student profile details live in Students; this tab is for parent, teacher, staff, finance, and admin users.
+          Manage role-specific details for parent, staff, finance, and admin users. Teacher details and assignments now live in the Teachers module.
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <label className="text-sm font-medium text-slate-700">
@@ -1541,7 +1540,7 @@ export function AdminConfigBuilder({
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {modules
-            .filter((module) => ["students", "attendance", "fees", "configuration"].includes(module.key))
+            .filter((module) => ["students", "teachers", "attendance", "fees", "configuration"].includes(module.key))
             .map((module) => (
               <div className="rounded-2xl border border-[#eadcc9] bg-white/55 p-4" key={module.key}>
                 <div className="flex items-start justify-between gap-3">

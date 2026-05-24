@@ -76,7 +76,15 @@ export function ConfigurableForm({
             <input
               className="mt-1 h-11 w-full rounded-2xl border border-[#e6d6bf] bg-white/80 px-3 text-slate-950 outline-none transition focus:border-[#173b45] focus:ring-4 focus:ring-[#d6ece8]"
               required={field.required}
-              type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+              type={
+                field.key === "password"
+                  ? "password"
+                  : field.type === "number"
+                    ? "number"
+                    : field.type === "date"
+                      ? "date"
+                      : "text"
+              }
               value={values[field.key] ?? ""}
               onChange={(event) =>
                 setValues({ ...values, [field.key]: event.target.value })

@@ -67,7 +67,7 @@ type AgentWork = {
   audit_trail: string;
 };
 
-const workingModules = new Set(["students", "attendance", "fees", "configuration"]);
+const workingModules = new Set(["students", "teachers", "attendance", "fees", "configuration"]);
 
 const icons = {
   BookOpen,
@@ -245,6 +245,7 @@ export function OsClient({
     }
     const name = String(
       record.full_name ??
+      record.name ??
       record.admission_number ??
       record.student_name ??
       record.fee_name ??
