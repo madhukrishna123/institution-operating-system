@@ -70,6 +70,41 @@ class ModuleRecordValue(Base):
     value: Mapped[str] = mapped_column(Text, default="")
 
 
+class ProfileFieldDefinition(Base):
+    __tablename__ = "profile_field_definitions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    profile_type: Mapped[str] = mapped_column(String(40), index=True)
+    field_key: Mapped[str] = mapped_column(String(80), index=True)
+    label: Mapped[str] = mapped_column(String(120))
+    field_type: Mapped[str] = mapped_column(String(40), default="text")
+    required: Mapped[bool] = mapped_column(Boolean, default=False)
+    visible: Mapped[bool] = mapped_column(Boolean, default=True)
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class ProfileFieldOption(Base):
+    __tablename__ = "profile_field_options"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    field_id: Mapped[int] = mapped_column(ForeignKey("profile_field_definitions.id"), index=True)
+    label: Mapped[str] = mapped_column(String(120))
+    value: Mapped[str] = mapped_column(String(120))
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class ProfileFieldValue(Base):
+    __tablename__ = "profile_field_values"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    profile_type: Mapped[str] = mapped_column(String(40), index=True)
+    profile_id: Mapped[int] = mapped_column(Integer, index=True)
+    field_key: Mapped[str] = mapped_column(String(80), index=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+
+
 class MasterDataSet(Base):
     __tablename__ = "master_data_sets"
 

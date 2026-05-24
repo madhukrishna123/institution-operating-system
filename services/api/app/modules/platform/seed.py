@@ -14,6 +14,11 @@ from app.modules.platform.models import (
     MasterDataOption,
     MasterDataSet,
     ModuleField,
+    ModuleFieldOption,
+    ModuleRecordValue,
+    ProfileFieldDefinition,
+    ProfileFieldOption,
+    ProfileFieldValue,
     RoleNavigation,
     UserAccount,
     WorkflowDefinition,
@@ -38,6 +43,7 @@ def seed_platform(db: Session) -> None:
     existing_institution = db.scalar(select(Institution).limit(1))
     if existing_institution:
         ensure_master_data(db)
+        ensure_profile_field_metadata(db)
         if settings.environment == "production":
             ensure_bootstrap_admin(db, existing_institution)
             db.commit()
@@ -109,6 +115,7 @@ def seed_platform(db: Session) -> None:
         ]
     )
     ensure_master_data(db)
+    ensure_profile_field_metadata(db)
 
     modules = [
         ("students", "Students", "Identity, guardians, classes, and learner context.", "GraduationCap", "cyan"),
@@ -307,5 +314,82 @@ def ensure_master_data(db: Session) -> None:
                         value=value,
                         order=index,
                         active=True,
+                    )
+                )
+
+
+def ensure_profile_field_metadata(db: Session) -> None:
+    core_student_fields = {
+        "admission_number",
+        "full_name",
+        "class_name",
+        "section",
+        "guardian_name",
+        "status",
+    }
+    legacy_fields = db.scalars(
+        select(ModuleField).where(
+            ModuleField.module_key == "students",
+            ModuleField.key.not_in(core_student_fields),
+        )
+    ).all()
+    for legacy in legacy_fields:
+        existing = db.scalar(
+            select(ProfileFieldDefinition).where(
+                ProfileFieldDefinition.profile_type == "student",
+                ProfileFieldDefinition.field_key == legacy.key,
+            )
+        )
+        if not existing:
+            field = ProfileFieldDefinition(
+                profile_type="student",
+                field_key=legacy.key,
+                label=legacy.label,
+                field_type=legacy.field_type,
+                required=legacy.required,
+                visible=legacy.visible,
+                active=True,
+                order=legacy.order,
+            )
+            db.add(field)
+            db.flush()
+            options = db.scalars(
+                select(ModuleFieldOption)
+                .where(ModuleFieldOption.field_id == legacy.id)
+                .order_by(ModuleFieldOption.order)
+            ).all()
+            db.add_all(
+                [
+                    ProfileFieldOption(
+                        field_id=field.id,
+                        label=option.label,
+                        value=option.value,
+                        order=option.order,
+                        active=True,
+                    )
+                    for option in options
+                ]
+            )
+        values = db.scalars(
+            select(ModuleRecordValue).where(
+                ModuleRecordValue.module_key == "students",
+                ModuleRecordValue.field_key == legacy.key,
+            )
+        ).all()
+        for value in values:
+            exists = db.scalar(
+                select(ProfileFieldValue).where(
+                    ProfileFieldValue.profile_type == "student",
+                    ProfileFieldValue.profile_id == value.record_id,
+                    ProfileFieldValue.field_key == value.field_key,
+                )
+            )
+            if not exists:
+                db.add(
+                    ProfileFieldValue(
+                        profile_type="student",
+                        profile_id=value.record_id,
+                        field_key=value.field_key,
+                        value=value.value,
                     )
                 )

@@ -56,6 +56,28 @@ type MasterDataOption = {
   active: boolean;
 };
 
+type ProfileField = {
+  id: number;
+  profile_type: string;
+  field_key: string;
+  key: string;
+  label: string;
+  field_type: string;
+  type: string;
+  required: boolean;
+  visible: boolean;
+  active: boolean;
+  order: number;
+  options?: { label: string; value: string }[];
+};
+
+type ProfileFieldGroup = {
+  profile_type: string;
+  label: string;
+  description: string;
+  fields: ProfileField[];
+};
+
 type NewField = {
   key: string;
   label: string;
@@ -107,7 +129,7 @@ const tabs = [
   { key: "institution", label: "Institution" },
   { key: "users", label: "Users" },
   { key: "master-data", label: "Master Data" },
-  { key: "student-fields", label: "Student Fields" },
+  { key: "profile-fields", label: "Profile Fields" },
   { key: "modules", label: "Modules" }
 ];
 
@@ -123,6 +145,8 @@ export function AdminConfigBuilder({
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [userOptions, setUserOptions] = useState<UserOptions>({ roles: [], students: [] });
   const [masterData, setMasterData] = useState<MasterDataSet[]>([]);
+  const [profileFields, setProfileFields] = useState<ProfileFieldGroup[]>([]);
+  const [activeProfileType, setActiveProfileType] = useState("student");
   const [newField, setNewField] = useState<NewField>(emptyField);
   const [userForm, setUserForm] = useState<UserForm>(emptyUser);
   const [passwordReset, setPasswordReset] = useState<Record<number, string>>({});
@@ -134,19 +158,28 @@ export function AdminConfigBuilder({
 
   async function load() {
     try {
-      const [nextInstitution, nextModules, nextUsers, nextUserOptions, nextMasterData] =
+      const [
+        nextInstitution,
+        nextModules,
+        nextUsers,
+        nextUserOptions,
+        nextMasterData,
+        nextProfileFields
+      ] =
         await Promise.all([
           apiGet<InstitutionConfig>("/api/config/institution", token),
           apiGet<ModuleConfig[]>("/api/config/modules", token),
           apiGet<AdminUser[]>("/api/admin/users", token),
           apiGet<UserOptions>("/api/admin/user-options", token),
-          apiGet<MasterDataSet[]>("/api/admin/master-data", token)
+          apiGet<MasterDataSet[]>("/api/admin/master-data", token),
+          apiGet<ProfileFieldGroup[]>("/api/config/profile-fields", token)
         ]);
       setInstitution(nextInstitution);
       setModules(nextModules);
       setUsers(nextUsers);
       setUserOptions(nextUserOptions);
       setMasterData(nextMasterData);
+      setProfileFields(nextProfileFields);
       setError("");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Could not load configuration");
@@ -360,8 +393,84 @@ export function AdminConfigBuilder({
     });
   }
 
+  function updateProfileFieldLocal(fieldId: number, patch: Partial<ProfileField>) {
+    setProfileFields((current) =>
+      current.map((group) =>
+        group.profile_type !== activeProfileType
+          ? group
+          : {
+              ...group,
+              fields: group.fields.map((field) =>
+                field.id === fieldId ? { ...field, ...patch } : field
+              )
+            }
+      )
+    );
+  }
+
+  async function addProfileField() {
+    if (!newField.key.trim() || !newField.label.trim()) {
+      setSaved("");
+      setError("Field key and label are required");
+      return;
+    }
+    const options = newField.optionsText
+      .split(",")
+      .map((option) => option.trim())
+      .filter(Boolean);
+    if (newField.field_type === "select" && options.length === 0) {
+      setSaved("");
+      setError("Add at least one LOV option for a select field");
+      return;
+    }
+    await runSave("add-profile-field", async () => {
+      await apiPost(
+        `/api/config/profile-fields/${activeProfileType}/fields`,
+        {
+          profile_type: activeProfileType,
+          field_key: newField.key.trim(),
+          label: newField.label.trim(),
+          field_type: newField.field_type,
+          visible: newField.visible,
+          required: newField.required,
+          options
+        },
+        token
+      );
+      setSaved("Profile field added");
+      setNewField(emptyField);
+      await load();
+    });
+  }
+
+  async function saveProfileFields() {
+    const group = profileFields.find((item) => item.profile_type === activeProfileType);
+    if (!group) {
+      return;
+    }
+    await runSave(`profile-fields-${activeProfileType}`, async () => {
+      await apiPost(
+        `/api/config/profile-fields/${activeProfileType}/fields/update`,
+        group.fields.map((field) => ({
+          id: field.id,
+          label: field.label,
+          field_type: field.field_type,
+          required: field.required,
+          visible: field.visible,
+          active: field.active,
+          order: Number(field.order) || 0,
+          options: field.options?.map((option) => option.label) ?? []
+        })),
+        token
+      );
+      setSaved("Profile fields saved");
+      await load();
+    });
+  }
+
   const studentsModule = modules.find((module) => module.key === "students");
   const needsStudentLink = userForm.role === "student" || userForm.role === "parent";
+  const activeProfileGroup = profileFields.find((group) => group.profile_type === activeProfileType);
 
   return (
     <section className="space-y-5">
@@ -583,10 +692,31 @@ export function AdminConfigBuilder({
       </article>
       ) : null}
 
-      {activeTab === "student-fields" ? (
+      {activeTab === "profile-fields" ? (
       <article className={cardClass}>
-        <h2 className="text-lg font-semibold">Add Student Field</h2>
-        <div className="mt-4 grid gap-4 md:grid-cols-3">
+        <h2 className="text-lg font-semibold">Profile Fields</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Custom fields are profile-specific. Student fields appear on student records; teacher and parent fields stay ready for those profile screens.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {profileFields.map((group) => (
+            <button
+              className={`rounded-2xl px-4 py-2 text-sm font-semibold ${
+                activeProfileType === group.profile_type
+                  ? "bg-[#173b45] text-white"
+                  : "border border-[#e6d6bf] bg-white/70 text-slate-700"
+              }`}
+              key={group.profile_type}
+              onClick={() => {
+                setActiveProfileType(group.profile_type);
+                setNewField(emptyField);
+              }}
+            >
+              {group.label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-5 grid gap-4 md:grid-cols-3">
           <label className="text-sm font-medium text-slate-700">
             Field Key
             <input className={inputClass} placeholder="blood_group" value={newField.key} onChange={(event) => setNewField({ ...newField, key: event.target.value })} />
@@ -618,47 +748,81 @@ export function AdminConfigBuilder({
             <input checked={newField.required} type="checkbox" onChange={(event) => setNewField({ ...newField, required: event.target.checked })} />
             Required
           </label>
-          <button className="rounded-2xl bg-[#173b45] px-4 py-2.5 text-sm font-semibold text-white" onClick={addStudentField}>
-            Add Field
+          <button className="rounded-2xl bg-[#173b45] px-4 py-2.5 text-sm font-semibold text-white" onClick={addProfileField}>
+            Add {activeProfileGroup?.label ?? "Profile"} Field
           </button>
         </div>
       </article>
       ) : null}
 
-      {activeTab === "student-fields" ? (
+      {activeTab === "profile-fields" ? (
       <article className={cardClass}>
-        <h2 className="text-lg font-semibold">Student Field Configuration</h2>
+        <h2 className="text-lg font-semibold">{activeProfileGroup?.label ?? "Profile"} Field Configuration</h2>
         <div className="mt-4 space-y-3">
-          {(studentsModule?.fields ?? []).map((field) => (
+          {(activeProfileGroup?.fields ?? []).length === 0 ? (
+            <div className="rounded-2xl border border-[#eadcc9] bg-white/55 p-4 text-sm text-slate-500">
+              No custom fields configured for this profile yet.
+            </div>
+          ) : null}
+          {(activeProfileGroup?.fields ?? []).map((field) => (
             <div className="grid gap-3 rounded-2xl border border-[#eadcc9] bg-white/55 p-3 md:grid-cols-[1fr_110px_110px_80px]" key={field.id}>
               <label className="text-sm font-medium text-slate-700">
                 Label
-                <input className={inputClass} value={field.label} onChange={(event) => updateField("students", field.id, { label: event.target.value })} />
+                <input className={inputClass} value={field.label} onChange={(event) => updateProfileFieldLocal(field.id, { label: event.target.value })} />
                 <span className="mt-1 block text-xs text-slate-400">
-                  {field.key} - {field.type}
+                  {field.field_key} - {field.field_type}
                   {field.options?.length ? ` - ${field.options.map((option) => option.label).join(", ")}` : ""}
                 </span>
               </label>
               <label className="flex items-center gap-2 self-center text-sm font-medium text-slate-700">
-                <input checked={field.visible} type="checkbox" onChange={(event) => updateField("students", field.id, { visible: event.target.checked })} />
+                <input checked={field.visible} type="checkbox" onChange={(event) => updateProfileFieldLocal(field.id, { visible: event.target.checked })} />
                 Visible
               </label>
               <label className="flex items-center gap-2 self-center text-sm font-medium text-slate-700">
-                <input checked={field.required} type="checkbox" onChange={(event) => updateField("students", field.id, { required: event.target.checked })} />
+                <input checked={field.required} type="checkbox" onChange={(event) => updateProfileFieldLocal(field.id, { required: event.target.checked })} />
                 Required
               </label>
               <label className="text-sm font-medium text-slate-700">
                 Order
-                <input className={inputClass} type="number" value={field.order} onChange={(event) => updateField("students", field.id, { order: Number(event.target.value) })} />
+                <input className={inputClass} type="number" value={field.order} onChange={(event) => updateProfileFieldLocal(field.id, { order: Number(event.target.value) })} />
+              </label>
+              <label className="text-sm font-medium text-slate-700 md:col-span-2">
+                Type
+                <select className={inputClass} value={field.field_type} onChange={(event) => updateProfileFieldLocal(field.id, { field_type: event.target.value })}>
+                  <option value="text">Text</option>
+                  <option value="number">Number</option>
+                  <option value="date">Date</option>
+                  <option value="select">Select / LOV</option>
+                </select>
+              </label>
+              {field.field_type === "select" ? (
+                <label className="text-sm font-medium text-slate-700 md:col-span-2">
+                  Options
+                  <input
+                    className={inputClass}
+                    value={field.options?.map((option) => option.label).join(", ") ?? ""}
+                    onChange={(event) =>
+                      updateProfileFieldLocal(field.id, {
+                        options: event.target.value
+                          .split(",")
+                          .map((option) => option.trim())
+                          .filter(Boolean)
+                          .map((option) => ({ label: option, value: option }))
+                      })
+                    }
+                  />
+                </label>
+              ) : null}
+              <label className="flex items-center gap-2 self-center text-sm font-medium text-slate-700">
+                <input checked={field.active} type="checkbox" onChange={(event) => updateProfileFieldLocal(field.id, { active: event.target.checked })} />
+                Active
               </label>
             </div>
           ))}
         </div>
-        {studentsModule ? (
-          <button className="mt-4 rounded-2xl border border-[#e6d6bf] bg-white/70 px-4 py-2 text-sm font-semibold text-slate-700" onClick={() => saveFields(studentsModule)}>
-            Save Student Fields
-          </button>
-        ) : null}
+        <button className="mt-4 rounded-2xl border border-[#e6d6bf] bg-white/70 px-4 py-2 text-sm font-semibold text-slate-700" onClick={saveProfileFields}>
+          Save Profile Fields
+        </button>
       </article>
       ) : null}
 

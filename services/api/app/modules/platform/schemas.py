@@ -79,3 +79,24 @@ class MasterDataOptionUpdate(BaseModel):
     value: str
     active: bool = True
     order: int = 0
+
+
+class ProfileFieldCreate(BaseModel):
+    profile_type: str
+    field_key: str
+    label: str
+    field_type: str = "text"
+    required: bool = False
+    visible: bool = True
+    options: list[str] = []
+
+
+class ProfileFieldUpdate(BaseModel):
+    id: int
+    label: str
+    field_type: str = "text"
+    required: bool = False
+    visible: bool = True
+    order: int = 0
+    active: bool = True
+    options: list[str] = []

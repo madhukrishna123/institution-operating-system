@@ -24,6 +24,9 @@ from app.modules.platform.models import (
     ModuleFieldOption,
     ModuleRecordValue,
     Notice,
+    ProfileFieldDefinition,
+    ProfileFieldOption,
+    ProfileFieldValue,
     RoleNavigation,
     UserAccount,
     WorkflowDefinition,
@@ -40,6 +43,8 @@ from app.modules.platform.schemas import (
     ModuleFieldUpdate,
     ModuleConfigUpdate,
     PasswordReset,
+    ProfileFieldCreate,
+    ProfileFieldUpdate,
     RejectRequest,
     WorkflowUpdate,
 )
@@ -83,12 +88,11 @@ def current_user(
 
 
 def field_config(db: Session, module_key: str) -> list[dict]:
-    fields = db.scalars(
-        select(ModuleField)
-        .where(ModuleField.module_key == module_key, ModuleField.visible == True)
-        .order_by(ModuleField.order)
-    ).all()
-    return [
+    query = select(ModuleField).where(ModuleField.module_key == module_key, ModuleField.visible == True)
+    if module_key == "students":
+        query = query.where(ModuleField.key.in_(CORE_STUDENT_FIELDS))
+    fields = db.scalars(query.order_by(ModuleField.order)).all()
+    configured_fields = [
         with_field_options(db, {
             "id": field.id,
             "key": field.key,
@@ -97,9 +101,13 @@ def field_config(db: Session, module_key: str) -> list[dict]:
             "visible": field.visible,
             "required": field.required,
             "order": field.order,
+            "source": "module",
         }) | ({"options": field_options(db, field.id)} if field.field_type == "select" else {})
         for field in fields
     ]
+    if module_key == "students":
+        configured_fields.extend(profile_field_config(db, "student"))
+    return configured_fields
 
 
 def with_field_options(db: Session, field: dict) -> dict:
@@ -136,12 +144,62 @@ def master_options(db: Session, set_key: str) -> list[dict[str, str]]:
     return [{"label": row.label, "value": row.value} for row in rows]
 
 
-def all_field_config(db: Session, module_key: str) -> list[dict]:
-    fields = db.scalars(
-        select(ModuleField)
-        .where(ModuleField.module_key == module_key)
-        .order_by(ModuleField.order)
+PROFILE_TYPES = ["student", "teacher", "parent", "staff", "finance", "admin"]
+CORE_STUDENT_FIELDS = {
+    "admission_number",
+    "full_name",
+    "class_name",
+    "section",
+    "guardian_name",
+    "status",
+}
+
+
+def profile_field_options(db: Session, field_id: int) -> list[dict[str, str]]:
+    rows = db.scalars(
+        select(ProfileFieldOption)
+        .where(ProfileFieldOption.field_id == field_id, ProfileFieldOption.active == True)
+        .order_by(ProfileFieldOption.order, ProfileFieldOption.label)
     ).all()
+    return [{"label": row.label, "value": row.value} for row in rows]
+
+
+def profile_field_config(
+    db: Session,
+    profile_type: str,
+    include_inactive: bool = False,
+) -> list[dict]:
+    query = select(ProfileFieldDefinition).where(ProfileFieldDefinition.profile_type == profile_type)
+    if not include_inactive:
+        query = query.where(
+            ProfileFieldDefinition.active == True,
+            ProfileFieldDefinition.visible == True,
+        )
+    fields = db.scalars(query.order_by(ProfileFieldDefinition.order, ProfileFieldDefinition.label)).all()
+    return [
+        {
+            "id": field.id,
+            "key": field.field_key,
+            "field_key": field.field_key,
+            "label": field.label,
+            "type": field.field_type,
+            "field_type": field.field_type,
+            "required": field.required,
+            "visible": field.visible,
+            "active": field.active,
+            "order": field.order,
+            "source": "profile_custom",
+            **({"options": profile_field_options(db, field.id)} if field.field_type == "select" else {}),
+        }
+        for field in fields
+    ]
+
+
+def all_field_config(db: Session, module_key: str) -> list[dict]:
+    query = select(ModuleField).where(ModuleField.module_key == module_key)
+    if module_key == "students":
+        query = query.where(ModuleField.key.in_(CORE_STUDENT_FIELDS))
+    fields = db.scalars(query.order_by(ModuleField.order)).all()
     return [
         with_field_options(db, {
             "id": field.id,
@@ -153,7 +211,7 @@ def all_field_config(db: Session, module_key: str) -> list[dict]:
             "order": field.order,
         }) | ({"options": field_options(db, field.id)} if field.field_type == "select" else {})
         for field in fields
-    ]
+    ] + (profile_field_config(db, "student", include_inactive=True) if module_key == "students" else [])
 
 
 def custom_values(db: Session, module_key: str, record_id: int) -> dict[str, str]:
@@ -163,7 +221,16 @@ def custom_values(db: Session, module_key: str, record_id: int) -> dict[str, str
             ModuleRecordValue.record_id == record_id,
         )
     ).all()
-    return {row.field_key: row.value for row in rows}
+    values = {row.field_key: row.value for row in rows}
+    if module_key == "students":
+        profile_rows = db.scalars(
+            select(ProfileFieldValue).where(
+                ProfileFieldValue.profile_type == "student",
+                ProfileFieldValue.profile_id == record_id,
+            )
+        ).all()
+        values.update({row.field_key: row.value for row in profile_rows})
+    return values
 
 
 def save_custom_values(
@@ -186,6 +253,26 @@ def save_custom_values(
         if key in core_student_fields:
             continue
         value = str(payload.get(key) or "").strip()
+        if module_key == "students" and field.get("source") == "profile_custom":
+            existing = db.scalar(
+                select(ProfileFieldValue).where(
+                    ProfileFieldValue.profile_type == "student",
+                    ProfileFieldValue.profile_id == record_id,
+                    ProfileFieldValue.field_key == key,
+                )
+            )
+            if existing:
+                existing.value = value
+            else:
+                db.add(
+                    ProfileFieldValue(
+                        profile_type="student",
+                        profile_id=record_id,
+                        field_key=key,
+                        value=value,
+                    )
+                )
+            continue
         existing = db.scalar(
             select(ModuleRecordValue).where(
                 ModuleRecordValue.module_key == module_key,
@@ -756,6 +843,146 @@ def delete_master_data_option(
     return {"status": "deleted", "id": option_id}
 
 
+def serialize_profile_field(db: Session, field: ProfileFieldDefinition) -> dict:
+    return {
+        "id": field.id,
+        "profile_type": field.profile_type,
+        "field_key": field.field_key,
+        "key": field.field_key,
+        "label": field.label,
+        "field_type": field.field_type,
+        "type": field.field_type,
+        "required": field.required,
+        "visible": field.visible,
+        "active": field.active,
+        "order": field.order,
+        "options": profile_field_options(db, field.id),
+    }
+
+
+@router.get("/config/profile-fields")
+def get_profile_fields(
+    user: UserAccount = Depends(current_user), db: Session = Depends(get_db)
+) -> list[dict]:
+    require_admin(user)
+    return [
+        {
+            "profile_type": profile_type,
+            "label": profile_type.replace("_", " ").title(),
+            "description": f"Custom fields that appear only on {profile_type} profiles.",
+            "fields": [
+                serialize_profile_field(db, field)
+                for field in db.scalars(
+                    select(ProfileFieldDefinition)
+                    .where(ProfileFieldDefinition.profile_type == profile_type)
+                    .order_by(ProfileFieldDefinition.order, ProfileFieldDefinition.label)
+                ).all()
+            ],
+        }
+        for profile_type in PROFILE_TYPES
+    ]
+
+
+@router.post("/config/profile-fields/{profile_type}/fields")
+def add_profile_field(
+    profile_type: str,
+    payload: ProfileFieldCreate,
+    user: UserAccount = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_admin(user)
+    if profile_type not in PROFILE_TYPES or payload.profile_type != profile_type:
+        raise HTTPException(status_code=400, detail="Unknown profile type")
+    key = payload.field_key.strip().lower().replace(" ", "_")
+    if not key:
+        raise HTTPException(status_code=400, detail="Field key is required")
+    if db.scalar(
+        select(ProfileFieldDefinition).where(
+            ProfileFieldDefinition.profile_type == profile_type,
+            ProfileFieldDefinition.field_key == key,
+        )
+    ):
+        raise HTTPException(status_code=409, detail="Field key already exists for this profile")
+    max_order = db.scalar(
+        select(func.max(ProfileFieldDefinition.order)).where(
+            ProfileFieldDefinition.profile_type == profile_type
+        )
+    )
+    field = ProfileFieldDefinition(
+        profile_type=profile_type,
+        field_key=key,
+        label=payload.label.strip() or key.replace("_", " ").title(),
+        field_type=payload.field_type if payload.field_type in ["text", "number", "date", "select"] else "text",
+        required=payload.required,
+        visible=payload.visible,
+        active=True,
+        order=(max_order or 0) + 1,
+    )
+    db.add(field)
+    db.flush()
+    if field.field_type == "select":
+        db.add_all(
+            [
+                ProfileFieldOption(
+                    field_id=field.id,
+                    label=option.strip(),
+                    value=option.strip(),
+                    order=index,
+                    active=True,
+                )
+                for index, option in enumerate(payload.options)
+                if option.strip()
+            ]
+        )
+    db.commit()
+    return {"status": "created", "field": serialize_profile_field(db, field)}
+
+
+@router.post("/config/profile-fields/{profile_type}/fields/update")
+def update_profile_fields(
+    profile_type: str,
+    payload: list[ProfileFieldUpdate],
+    user: UserAccount = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_admin(user)
+    if profile_type not in PROFILE_TYPES:
+        raise HTTPException(status_code=400, detail="Unknown profile type")
+    fields = {
+        field.id: field
+        for field in db.scalars(
+            select(ProfileFieldDefinition).where(ProfileFieldDefinition.profile_type == profile_type)
+        )
+    }
+    for update in payload:
+        field = fields.get(update.id)
+        if not field:
+            continue
+        field.label = update.label.strip() or field.label
+        field.field_type = update.field_type if update.field_type in ["text", "number", "date", "select"] else "text"
+        field.required = update.required
+        field.visible = update.visible
+        field.active = update.active
+        field.order = update.order
+        db.query(ProfileFieldOption).filter(ProfileFieldOption.field_id == field.id).delete()
+        if field.field_type == "select":
+            db.add_all(
+                [
+                    ProfileFieldOption(
+                        field_id=field.id,
+                        label=option.strip(),
+                        value=option.strip(),
+                        order=index,
+                        active=True,
+                    )
+                    for index, option in enumerate(update.options)
+                    if option.strip()
+                ]
+            )
+    db.commit()
+    return {"status": "saved", "profile_type": profile_type}
+
+
 @router.post("/config/modules")
 def update_config_module(
     payload: ModuleConfigUpdate,
@@ -1115,6 +1342,10 @@ def delete_module_record(
         db.query(ModuleRecordValue).filter(
             ModuleRecordValue.module_key == module_key,
             ModuleRecordValue.record_id == record_id,
+        ).delete()
+        db.query(ProfileFieldValue).filter(
+            ProfileFieldValue.profile_type == "student",
+            ProfileFieldValue.profile_id == record_id,
         ).delete()
         attendance_ids = [
             row[0]
