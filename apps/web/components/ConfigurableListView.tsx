@@ -11,6 +11,7 @@ type ConfigurableListViewProps = {
   records: Record<string, string | number | boolean | null>[];
   canEdit?: boolean;
   canDelete?: boolean;
+  emptyMessage?: string;
   onEdit?: (record: Record<string, string | number | boolean | null>) => void;
   onDelete?: (record: Record<string, string | number | boolean | null>) => void;
 };
@@ -20,6 +21,7 @@ export function ConfigurableListView({
   records,
   canEdit = false,
   canDelete = false,
+  emptyMessage = "No records yet. Create the first one when you are ready.",
   onEdit,
   onDelete
 }: ConfigurableListViewProps) {
@@ -43,7 +45,7 @@ export function ConfigurableListView({
             {records.length === 0 ? (
               <tr>
                 <td className="px-4 py-10 text-center text-slate-500" colSpan={fields.length + (hasActions ? 1 : 0)}>
-                  No records yet. Create the first one when you are ready.
+                  {emptyMessage}
                 </td>
               </tr>
             ) : (

@@ -282,6 +282,19 @@ export function OsClient({
     );
   }
 
+  function emptyRecordsMessage() {
+    if (selectedModule === "attendance" && ["parent", "student"].includes(session?.role ?? "")) {
+      return "No attendance has been recorded for the linked student yet. Once a teacher marks attendance, it will appear here.";
+    }
+    if (selectedModule === "fees" && ["parent", "student"].includes(session?.role ?? "")) {
+      return "No fee records are available for the linked student yet.";
+    }
+    if (!modulePayload?.can_create) {
+      return "No records are available for your account yet.";
+    }
+    return "No records yet. Create the first one when you are ready.";
+  }
+
   if (!session || !workspace) {
     return (
       <main className="min-h-screen overflow-hidden text-[#1f2933]">
@@ -626,6 +639,7 @@ export function OsClient({
                   records={modulePayload.records}
                   canEdit={modulePayload.can_edit}
                   canDelete={modulePayload.can_delete}
+                  emptyMessage={emptyRecordsMessage()}
                   onEdit={(record) => setEditingRecord(record)}
                   onDelete={deleteRecord}
                 />
