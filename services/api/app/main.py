@@ -93,3 +93,9 @@ def ensure_sqlite_compatibility() -> None:
         ]
         if "active" not in user_columns:
             connection.execute(text("ALTER TABLE user_accounts ADD COLUMN active BOOLEAN DEFAULT 1"))
+        role_profile_columns = [
+            row[1]
+            for row in connection.execute(text("PRAGMA table_info(role_profiles)")).fetchall()
+        ]
+        if role_profile_columns and "contact_email" not in role_profile_columns:
+            connection.execute(text("ALTER TABLE role_profiles ADD COLUMN contact_email VARCHAR(160) DEFAULT ''"))

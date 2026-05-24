@@ -112,6 +112,7 @@ class RoleProfileUpdate(BaseModel):
     occupation: str = ""
     relationship_type: str = ""
     preferred_language: str = ""
+    contact_email: str = ""
     whatsapp_number: str = ""
     active: bool = True
     custom_values: dict[str, str] = {}

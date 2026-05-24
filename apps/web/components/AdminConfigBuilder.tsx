@@ -97,6 +97,7 @@ type RoleProfile = {
   occupation?: string | null;
   relationship_type?: string | null;
   preferred_language?: string | null;
+  contact_email?: string | null;
   whatsapp_number?: string | null;
   active: boolean;
   custom_values?: Record<string, unknown> | null;
@@ -139,6 +140,7 @@ type RoleProfileForm = {
   occupation: string;
   relationship_type: string;
   preferred_language: string;
+  contact_email: string;
   whatsapp_number: string;
   active: boolean;
   custom_values: Record<string, string>;
@@ -179,6 +181,7 @@ const emptyRoleProfile: RoleProfileForm = {
   occupation: "",
   relationship_type: "",
   preferred_language: "",
+  contact_email: "",
   whatsapp_number: "",
   active: true,
   custom_values: {}
@@ -375,6 +378,7 @@ export function AdminConfigBuilder({
       occupation: profile.occupation ?? "",
       relationship_type: profile.relationship_type ?? "",
       preferred_language: profile.preferred_language ?? "",
+      contact_email: profile.contact_email ?? "",
       whatsapp_number: profile.whatsapp_number ?? "",
       active: profile.active,
       custom_values: {
@@ -408,6 +412,7 @@ export function AdminConfigBuilder({
         occupation: roleProfileForm.occupation.trim(),
         relationship_type: roleProfileForm.relationship_type.trim(),
         preferred_language: roleProfileForm.preferred_language.trim(),
+        contact_email: roleProfileForm.contact_email.trim().toLowerCase(),
         whatsapp_number: roleProfileForm.whatsapp_number.trim(),
         active: roleProfileForm.active,
         custom_values: roleProfileForm.custom_values
@@ -713,7 +718,7 @@ export function AdminConfigBuilder({
       <article className={cardClass}>
         <h2 className="text-lg font-semibold">Users</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Add staff, parent, and student logins. Student and parent users must be linked to a student record.
+          Add logins. Login email must be unique; shared family/contact emails belong in Profiles.
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <label className="text-sm font-medium text-slate-700">
@@ -721,7 +726,7 @@ export function AdminConfigBuilder({
             <input className={inputClass} value={userForm.name} onChange={(event) => setUserForm({ ...userForm, name: event.target.value })} />
           </label>
           <label className="text-sm font-medium text-slate-700">
-            Email
+            Login Email
             <input className={inputClass} value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} />
           </label>
           <label className="text-sm font-medium text-slate-700">
@@ -974,6 +979,17 @@ export function AdminConfigBuilder({
             />
           </label>
           <label className="text-sm font-medium text-slate-700">
+            Contact Email
+            <input
+              className={inputClass}
+              type="email"
+              value={roleProfileForm.contact_email}
+              onChange={(event) =>
+                setRoleProfileForm({ ...roleProfileForm, contact_email: event.target.value })
+              }
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
             WhatsApp Number
             <input
               className={inputClass}
@@ -1098,8 +1114,10 @@ export function AdminConfigBuilder({
                     </p>
                   </td>
                   <td>
-                    <p>{profile.whatsapp_number || "-"}</p>
-                    <p className="text-xs text-slate-500">{profile.preferred_language || ""}</p>
+                    <p>{profile.contact_email || profile.whatsapp_number || "-"}</p>
+                    <p className="text-xs text-slate-500">
+                      {[profile.whatsapp_number, profile.preferred_language].filter(Boolean).join(" / ")}
+                    </p>
                   </td>
                   <td>{profile.active ? "Active" : "Disabled"}</td>
                   <td>

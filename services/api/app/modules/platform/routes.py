@@ -638,7 +638,10 @@ def validate_admin_user_payload(
     if existing_id:
         duplicate_query = duplicate_query.where(UserAccount.id != existing_id)
     if db.scalar(duplicate_query):
-        raise HTTPException(status_code=409, detail="Email already exists")
+        raise HTTPException(
+            status_code=409,
+            detail="Login email already exists. Use a unique login email and store shared family email in Profiles.",
+        )
     return name, email, role
 
 
@@ -719,6 +722,7 @@ def serialize_role_profile(db: Session, profile: RoleProfile, account: UserAccou
         "occupation": profile.occupation,
         "relationship_type": profile.relationship_type,
         "preferred_language": profile.preferred_language,
+        "contact_email": profile.contact_email,
         "whatsapp_number": profile.whatsapp_number,
         "active": profile.active,
         "custom_values": profile_custom_values(db, profile.profile_type, profile.id),
@@ -770,6 +774,7 @@ def save_role_profile(
     profile.occupation = payload.occupation.strip()
     profile.relationship_type = payload.relationship_type.strip()
     profile.preferred_language = payload.preferred_language.strip()
+    profile.contact_email = payload.contact_email.strip().lower()
     profile.whatsapp_number = payload.whatsapp_number.strip()
     profile.active = payload.active
     db.flush()

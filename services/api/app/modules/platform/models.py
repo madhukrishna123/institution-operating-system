@@ -120,6 +120,7 @@ class RoleProfile(Base):
     occupation: Mapped[str] = mapped_column(String(120), default="")
     relationship_type: Mapped[str] = mapped_column(String(80), default="")
     preferred_language: Mapped[str] = mapped_column(String(80), default="")
+    contact_email: Mapped[str] = mapped_column(String(160), default="")
     whatsapp_number: Mapped[str] = mapped_column(String(40), default="")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 

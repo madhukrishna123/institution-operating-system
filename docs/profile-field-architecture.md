@@ -49,6 +49,7 @@ role_profiles
 - occupation
 - relationship_type
 - preferred_language
+- contact_email
 - whatsapp_number
 - active
 
@@ -93,6 +94,8 @@ admin
 `profile_id` points to the profile record for that profile type. In the current incremental implementation, `student` profile values point to the existing `students.id`. When full person/profile tables are introduced, `profile_id` will point to `student_profiles.id`, `teacher_profiles.id`, and so on.
 
 For non-student users, `role_profiles` is the current role-specific profile record. A teacher user has one teacher profile, a parent user has one parent profile, and so on. This gives admins a simple place to manage role attributes now, while keeping a clean path toward a full person/profile model later.
+
+`user_accounts.email` is the login identifier and must stay unique until multi-role login is introduced. Profile contact email is different: it is a communication field and can repeat. For example, a student profile and parent profile can both store the same family email address.
 
 ## Query Behavior
 
