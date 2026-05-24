@@ -21,14 +21,6 @@ import { ConfigurableForm } from "./ConfigurableForm";
 import { ConfigurableListView } from "./ConfigurableListView";
 import { ApiSession, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 
-type SeedUser = {
-  email: string;
-  name: string;
-  role: string;
-  password?: string;
-  can_quick_login?: boolean;
-};
-
 type Workspace = {
   user: { name: string; email: string; role: string };
   institution: { name: string; locale: string };
@@ -94,20 +86,16 @@ function defaultValues(moduleKey: string): Record<string, string> {
 }
 
 export function OsClient({
-  initialModule = "workspace",
-  initialSeedUsers = []
+  initialModule = "workspace"
 }: {
   initialModule?: string;
-  initialSeedUsers?: SeedUser[];
 }) {
-  const [seedUsers, setSeedUsers] = useState<SeedUser[]>(initialSeedUsers);
   const [session, setSession] = useState<ApiSession | null>(null);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [selectedModule, setSelectedModule] = useState(initialModule);
   const [modulePayload, setModulePayload] = useState<ModulePayload | null>(null);
   const [agentWork, setAgentWork] = useState<AgentWork[]>([]);
   const [editingRecord, setEditingRecord] = useState<Record<string, string | number | boolean | null> | null>(null);
-  const [selectedLoginEmail, setSelectedLoginEmail] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -116,7 +104,6 @@ export function OsClient({
 
   const token = session?.token ?? "";
   const canConfigure = session?.role === "admin" || session?.role === "super_admin";
-  const selectedLoginUser = seedUsers.find((user) => user.email === selectedLoginEmail);
 
   const navigation = useMemo(
     () => (workspace?.navigation ?? []).filter((item) => workingModules.has(item.module_key)),
@@ -124,11 +111,6 @@ export function OsClient({
   );
 
   useEffect(() => {
-    if (initialSeedUsers.length === 0) {
-      apiGet<SeedUser[]>("/api/auth/seed-users")
-        .then(setSeedUsers)
-        .catch((nextError) => setError(`Could not load users: ${nextError.message}`));
-    }
     const saved = window.localStorage.getItem("ai_os_session");
     if (saved) {
       try {
@@ -137,7 +119,7 @@ export function OsClient({
         window.localStorage.removeItem("ai_os_session");
       }
     }
-  }, [initialSeedUsers.length]);
+  }, []);
 
   useEffect(() => {
     if (!session) {
@@ -334,80 +316,36 @@ export function OsClient({
                   {error}
                 </div>
               ) : null}
-              {seedUsers.length > 0 ? (
-                <div className="mt-4 space-y-3">
-                  <label className="block text-sm font-medium text-slate-700">
-                    Quick role access
-                    <select
-                      className="mt-1 h-11 w-full rounded-2xl border border-[#e6d6bf] bg-white/80 px-3 text-slate-950 outline-none transition focus:border-[#173b45] focus:ring-4 focus:ring-[#d6ece8]"
-                      value={selectedLoginEmail}
-                      onChange={(event) => {
-                        const nextUser = seedUsers.find((user) => user.email === event.target.value);
-                        setSelectedLoginEmail(event.target.value);
-                        setLoginEmail(nextUser?.email ?? "");
-                        setLoginPassword("");
-                        setError(nextUser && !nextUser.can_quick_login ? "Enter the password created for this user." : "");
-                      }}
-                    >
-                      <option value="">Select an account</option>
-                      {seedUsers.filter((user) => user.can_quick_login).map((user) => (
-                        <option key={user.email} value={user.email}>
-                          {roleLabel(user.role)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {selectedLoginUser?.can_quick_login ? (
-                    <button
-                      className="flex w-full items-center justify-center rounded-2xl bg-[#173b45] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0f2c34] disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={isLoggingIn}
-                      onClick={() => login(selectedLoginUser.email, selectedLoginUser.password ?? "password")}
-                    >
-                      {isLoggingIn ? "Signing in..." : `Continue as ${roleLabel(selectedLoginUser.role)}`}
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-              {seedUsers.length > 0 ? (
-                <div className="mt-5 border-t border-[#eadcc9] pt-5">
-                  <p className="text-sm font-semibold text-slate-700">Email sign in</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                    Use this for users created by admin.
-                  </p>
-                </div>
-              ) : null}
-              {seedUsers.length === 0 || loginEmail ? (
-                <form className="mt-4 space-y-3" onSubmit={submitEmailLogin}>
-                  <label className="block text-sm font-medium text-slate-700">
-                    Email
-                    <input
-                      className="mt-1 w-full rounded-2xl border border-[#e6d6bf] bg-white/80 px-3 py-2.5 text-slate-950 outline-none transition focus:border-[#173b45] focus:ring-4 focus:ring-[#d6ece8]"
-                      type="email"
-                      value={loginEmail}
-                      onChange={(event) => setLoginEmail(event.target.value)}
-                      autoComplete="email"
-                      required
-                    />
-                  </label>
-                  <label className="block text-sm font-medium text-slate-700">
-                    Password
-                    <input
-                      className="mt-1 w-full rounded-2xl border border-[#e6d6bf] bg-white/80 px-3 py-2.5 text-slate-950 outline-none transition focus:border-[#173b45] focus:ring-4 focus:ring-[#d6ece8]"
-                      type="password"
-                      value={loginPassword}
-                      onChange={(event) => setLoginPassword(event.target.value)}
-                      autoComplete="current-password"
-                      required
-                    />
-                  </label>
-                  <button
-                    className="flex w-full items-center justify-center rounded-2xl bg-[#173b45] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0f2c34] disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={isLoggingIn}
-                  >
-                    {isLoggingIn ? "Signing in..." : "Sign in"}
-                  </button>
-                </form>
-              ) : null}
+              <form className="mt-4 space-y-3" onSubmit={submitEmailLogin}>
+                <label className="block text-sm font-medium text-slate-700">
+                  Username
+                  <input
+                    className="mt-1 w-full rounded-2xl border border-[#e6d6bf] bg-white/80 px-3 py-2.5 text-slate-950 outline-none transition focus:border-[#173b45] focus:ring-4 focus:ring-[#d6ece8]"
+                    type="email"
+                    value={loginEmail}
+                    onChange={(event) => setLoginEmail(event.target.value)}
+                    autoComplete="username"
+                    required
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Password
+                  <input
+                    className="mt-1 w-full rounded-2xl border border-[#e6d6bf] bg-white/80 px-3 py-2.5 text-slate-950 outline-none transition focus:border-[#173b45] focus:ring-4 focus:ring-[#d6ece8]"
+                    type="password"
+                    value={loginPassword}
+                    onChange={(event) => setLoginPassword(event.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                </label>
+                <button
+                  className="flex w-full items-center justify-center rounded-2xl bg-[#173b45] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0f2c34] disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isLoggingIn}
+                >
+                  {isLoggingIn ? "Signing in..." : "Sign in"}
+                </button>
+              </form>
             </div>
           </div>
         </section>
