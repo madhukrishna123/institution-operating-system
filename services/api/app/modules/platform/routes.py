@@ -230,6 +230,18 @@ def teacher_options(db: Session) -> list[dict[str, str]]:
     return [{"label": row.name, "value": row.name} for row in rows]
 
 
+def teacher_account_by_name(db: Session, teacher_name: str) -> UserAccount | None:
+    if not teacher_name:
+        return None
+    return db.scalar(
+        select(UserAccount).where(
+            UserAccount.role == "teacher",
+            UserAccount.active == True,
+            UserAccount.name == teacher_name,
+        )
+    )
+
+
 PROFILE_TYPES = ["student", "teacher", "parent", "staff", "finance", "admin"]
 ROLE_PROFILE_TYPES = ["teacher", "parent", "staff", "finance", "admin"]
 GENERIC_MODULE_KEYS = {
@@ -238,6 +250,7 @@ GENERIC_MODULE_KEYS = {
     "subjects",
     "section_subjects",
     "student_subject_choices",
+    "teacher_assignments",
     "exams",
 }
 CORE_STUDENT_FIELDS = {
@@ -417,17 +430,7 @@ def sync_section_class_teacher_assignment(db: Session, record_id: int, payload: 
             TeacherAssignment.assignment_role == "Class Teacher",
         )
     ).all()
-    teacher = (
-        db.scalar(
-            select(UserAccount).where(
-                UserAccount.role == "teacher",
-                UserAccount.active == True,
-                UserAccount.name == teacher_name,
-            )
-        )
-        if teacher_name
-        else None
-    )
+    teacher = teacher_account_by_name(db, teacher_name)
     if not teacher:
         for assignment in existing_for_section:
             assignment.active = False
@@ -470,6 +473,36 @@ def sync_section_class_teacher_assignment(db: Session, record_id: int, payload: 
     else:
         row.subject = row.subject or "Homeroom"
         row.active = True
+
+
+def create_or_update_teacher_assignment_from_payload(
+    db: Session,
+    payload: dict,
+    assignment_id: int | None = None,
+) -> TeacherAssignment:
+    teacher_name = str(payload.get("teacher") or "").strip()
+    teacher = teacher_account_by_name(db, teacher_name)
+    if not teacher:
+        raise HTTPException(status_code=400, detail="Select a valid teacher")
+    class_name = str(payload.get("class_name") or "").strip()
+    section = str(payload.get("section") or "").strip()
+    if not class_name:
+        raise HTTPException(status_code=400, detail="Class is required")
+    if not section:
+        raise HTTPException(status_code=400, detail="Section is required")
+    row = db.get(TeacherAssignment, assignment_id) if assignment_id else None
+    if assignment_id and not row:
+        raise HTTPException(status_code=404, detail="Teacher assignment not found")
+    if not row:
+        row = TeacherAssignment(teacher_user_id=teacher.id)
+        db.add(row)
+    row.teacher_user_id = teacher.id
+    row.class_name = class_name
+    row.section = section
+    row.subject = str(payload.get("subject") or "").strip()
+    row.assignment_role = str(payload.get("assignment_role") or "Subject Teacher").strip() or "Subject Teacher"
+    row.active = str(payload.get("status") or "active").strip().lower() != "inactive"
+    return row
 
 
 def save_custom_values(
@@ -626,6 +659,8 @@ def create_fields(db: Session, module_key: str) -> list[dict]:
             {"key": "assignment_role", "label": "Assignment Role", "type": "select", "required": False, "options": master_options(db, "teacher_assignment_roles")},
         ]
         return base_fields + [field for field in extra_fields if field["key"] not in base_keys]
+    if module_key == "teacher_assignments":
+        return field_config(db, module_key)
     if module_key in GENERIC_MODULE_KEYS:
         return field_config(db, module_key)
     return []
@@ -640,6 +675,7 @@ def can_create_record(module_key: str, role: str) -> bool:
         "subjects": role in ["admin", "super_admin"],
         "section_subjects": role in ["admin", "super_admin"],
         "student_subject_choices": role in ["admin", "super_admin"],
+        "teacher_assignments": role in ["admin", "super_admin"],
         "exams": role in ["admin", "super_admin"],
         "attendance": role in ["teacher", "admin", "super_admin"],
         "fees": role in ["finance", "admin", "super_admin"],
@@ -656,6 +692,7 @@ def can_edit_record(module_key: str, role: str) -> bool:
         "subjects": role in ["admin", "super_admin"],
         "section_subjects": role in ["admin", "super_admin"],
         "student_subject_choices": role in ["admin", "super_admin"],
+        "teacher_assignments": role in ["admin", "super_admin"],
         "exams": role in ["admin", "super_admin"],
         "attendance": role in ["teacher", "admin", "super_admin"],
         "fees": role in ["finance", "admin", "super_admin"],
@@ -672,6 +709,7 @@ def can_delete_record(module_key: str, role: str) -> bool:
         "subjects": role in ["admin", "super_admin"],
         "section_subjects": role in ["admin", "super_admin"],
         "student_subject_choices": role in ["admin", "super_admin"],
+        "teacher_assignments": role in ["admin", "super_admin"],
         "exams": role in ["admin", "super_admin"],
         "attendance": role in ["teacher", "admin", "super_admin"],
         "fees": role in ["finance", "admin", "super_admin"],
@@ -694,6 +732,7 @@ def ensure_record_permission(module_key: str, role: str, action: str) -> None:
             "subjects": "Subjects require admin role",
             "section_subjects": "Section subjects require admin role",
             "student_subject_choices": "Student subject choices require admin role",
+            "teacher_assignments": "Teacher assignments require admin role",
             "exams": "Exams require admin role",
             "attendance": "Attendance requires teacher/admin role",
             "fees": "Fees require finance/admin role",
@@ -1828,6 +1867,26 @@ def module_records(
             .order_by(UserAccount.name)
         ).all()
         records = [serialize_teacher_record(db, teacher) for teacher in teachers]
+    elif module_key == "teacher_assignments":
+        rows = db.scalars(
+            select(TeacherAssignment).order_by(
+                TeacherAssignment.class_name,
+                TeacherAssignment.section,
+                TeacherAssignment.subject,
+            )
+        ).all()
+        records = [
+            {
+                "id": row.id,
+                "teacher": db.get(UserAccount, row.teacher_user_id).name if db.get(UserAccount, row.teacher_user_id) else "",
+                "class_name": row.class_name,
+                "section": row.section,
+                "subject": row.subject,
+                "assignment_role": row.assignment_role,
+                "status": "active" if row.active else "inactive",
+            }
+            for row in rows
+        ]
     elif module_key == "attendance":
         rows = db.execute(
             select(AttendanceRecord, Student.full_name)
@@ -2025,6 +2084,13 @@ def create_module_record(
         return {"status": "created", "id": account.id}
     if module_key == "attendance":
         return mark_attendance(payload, user, db)
+    if module_key == "teacher_assignments":
+        ensure_record_permission(module_key, user.role, "create")
+        fields = create_fields(db, module_key)
+        validate_required_fields(fields, payload)
+        row = create_or_update_teacher_assignment_from_payload(db, payload)
+        db.commit()
+        return {"status": "created", "id": row.id}
     if module_key == "fees":
         ensure_record_permission(module_key, user.role, "create")
         validate_required_fields(create_fields(db, "fees"), payload)
@@ -2162,6 +2228,10 @@ def update_module_record(
         attendance.status = str(payload["status"]).strip()
         attendance.note = str(payload.get("note") or "").strip()
         create_agent_work_for_attendance(db, attendance, db.get(Student, attendance.student_id), user)
+    elif module_key == "teacher_assignments":
+        fields = create_fields(db, module_key)
+        validate_required_fields(fields, payload)
+        create_or_update_teacher_assignment_from_payload(db, payload, record_id)
     elif module_key == "fees":
         invoice = db.get(Invoice, record_id)
         if not invoice:
@@ -2250,6 +2320,11 @@ def delete_module_record(
         ).delete()
         db.query(TeacherAssignment).filter(TeacherAssignment.teacher_user_id == account.id).delete()
         db.delete(account)
+    elif module_key == "teacher_assignments":
+        row = db.get(TeacherAssignment, record_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Teacher assignment not found")
+        db.delete(row)
     elif module_key == "attendance":
         attendance = db.get(AttendanceRecord, record_id)
         if not attendance:

@@ -73,6 +73,7 @@ const workingModules = new Set([
   "subjects",
   "section_subjects",
   "student_subject_choices",
+  "teacher_assignments",
   "students",
   "teachers",
   "attendance",
@@ -107,6 +108,7 @@ function defaultValues(moduleKey: string): Record<string, string> {
       "subjects",
       "section_subjects",
       "student_subject_choices",
+      "teacher_assignments",
       "students",
       "teachers",
       "exams"
@@ -625,6 +627,7 @@ export function OsClient({
                       ) : null}
                     </div>
                     <ConfigurableForm
+                      key={`${selectedModule}-${editingRecord?.id ?? "new"}`}
                       fields={modulePayload.create_fields}
                       initialValues={editValues()}
                       onSubmit={editingRecord ? updateRecord : createRecord}

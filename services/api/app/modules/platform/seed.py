@@ -233,6 +233,7 @@ def core_modules() -> list[tuple[str, str, str, str, str]]:
         ("subjects", "Subjects", "Subjects that can be assigned to teachers and exams.", "BookOpen", "violet"),
         ("section_subjects", "Section Subjects", "Subjects offered for a class section, including teachers and choice type.", "BookOpen", "emerald"),
         ("student_subject_choices", "Student Subject Choices", "Student-level subject choices such as second language or electives.", "GraduationCap", "amber"),
+        ("teacher_assignments", "Teacher Assignments", "Multiple class, section, subject, and responsibility assignments for teachers.", "Users", "rose"),
         ("students", "Students", "Identity, guardians, classes, and learner context.", "GraduationCap", "cyan"),
         ("teachers", "Teachers", "Teacher profiles, login access, and class or subject assignments.", "Users", "rose"),
         ("attendance", "Attendance", "Daily marking, risk detection, and interventions.", "ClipboardCheck", "emerald"),
@@ -283,6 +284,15 @@ def core_module_fields() -> dict[str, list[tuple[str, str, str, bool, bool]]]:
             ("academic_year", "Academic Year", "text", True, False),
             ("status", "Status", "text", True, False),
         ],
+        "teacher_assignments": [
+            ("teacher", "Teacher", "select", True, True),
+            ("class_name", "Class", "select", True, True),
+            ("section", "Section", "select", True, True),
+            ("subject", "Subject", "select", True, False),
+            ("assignment_role", "Assignment Role", "select", True, True),
+            ("academic_year", "Academic Year", "text", True, False),
+            ("status", "Status", "text", True, False),
+        ],
         "students": [
             ("admission_number", "Admission No.", "text", True, True),
             ("full_name", "Full Name", "text", True, True),
@@ -328,8 +338,8 @@ def core_module_fields() -> dict[str, list[tuple[str, str, str, bool, bool]]]:
 
 def core_role_modules() -> dict[str, list[str]]:
     return {
-        "super_admin": ["classes", "sections", "subjects", "section_subjects", "student_subject_choices", "students", "teachers", "attendance", "fees", "exams", "analytics", "configuration"],
-        "admin": ["classes", "sections", "subjects", "section_subjects", "student_subject_choices", "students", "teachers", "attendance", "fees", "exams", "messages", "analytics", "configuration"],
+        "super_admin": ["classes", "sections", "subjects", "section_subjects", "student_subject_choices", "teacher_assignments", "students", "teachers", "attendance", "fees", "exams", "analytics", "configuration"],
+        "admin": ["classes", "sections", "subjects", "section_subjects", "student_subject_choices", "teacher_assignments", "students", "teachers", "attendance", "fees", "exams", "messages", "analytics", "configuration"],
         "teacher": ["students", "attendance", "exams", "timetable", "messages"],
         "student": ["attendance", "timetable", "exams", "messages"],
         "parent": ["attendance", "fees", "messages"],
