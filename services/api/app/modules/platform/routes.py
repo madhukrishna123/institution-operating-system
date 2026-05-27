@@ -97,16 +97,7 @@ def field_config(db: Session, module_key: str) -> list[dict]:
     query = select(ModuleField).where(ModuleField.module_key == module_key, ModuleField.visible == True)
     fields = db.scalars(query.order_by(ModuleField.order)).all()
     configured_fields = [
-        with_field_options(db, {
-            "id": field.id,
-            "key": field.key,
-            "label": field.label,
-            "type": field.field_type,
-            "visible": field.visible,
-            "required": field.required,
-            "order": field.order,
-            "source": "module",
-        }) | ({"options": field_options(db, field.id)} if field.field_type == "select" else {})
+        serialize_module_field(db, field, source="module")
         for field in fields
     ]
     if module_key == "attendance":
@@ -120,6 +111,24 @@ def field_config(db: Session, module_key: str) -> list[dict]:
     if module_key == "teachers":
         configured_fields.extend(profile_field_config(db, "teacher"))
     return configured_fields
+
+
+def serialize_module_field(db: Session, field: ModuleField, source: str | None = None) -> dict:
+    payload = {
+        "id": field.id,
+        "key": field.key,
+        "label": field.label,
+        "type": field.field_type,
+        "visible": field.visible,
+        "required": field.required,
+        "order": field.order,
+    }
+    if source:
+        payload["source"] = source
+    payload = with_field_options(db, payload)
+    if field.field_type == "select" and "options" not in payload:
+        payload["options"] = field_options(db, field.id)
+    return payload
 
 
 def with_field_options(db: Session, field: dict) -> dict:
@@ -338,15 +347,7 @@ def all_field_config(db: Session, module_key: str) -> list[dict]:
     query = select(ModuleField).where(ModuleField.module_key == module_key)
     fields = db.scalars(query.order_by(ModuleField.order)).all()
     return [
-        with_field_options(db, {
-            "id": field.id,
-            "key": field.key,
-            "label": field.label,
-            "type": field.field_type,
-            "visible": field.visible,
-            "required": field.required,
-            "order": field.order,
-        }) | ({"options": field_options(db, field.id)} if field.field_type == "select" else {})
+        serialize_module_field(db, field)
         for field in fields
     ] + (profile_field_config(db, "student", include_inactive=True) if module_key == "students" else []) + (
         profile_field_config(db, "teacher", include_inactive=True) if module_key == "teachers" else []
