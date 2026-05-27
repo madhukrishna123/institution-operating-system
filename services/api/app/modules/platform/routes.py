@@ -130,6 +130,10 @@ def with_field_options(db: Session, field: dict) -> dict:
         "assignment_section": section_options(db),
         "assignment_subject": subject_options(db),
         "assignment_role": master_options(db, "teacher_assignment_roles"),
+        "subject": subject_options(db),
+        "teacher": teacher_options(db),
+        "student": student_options(db),
+        "subject_type": master_options(db, "subject_types"),
         "status": [
             {"label": "Active", "value": "active"},
             {"label": "Inactive", "value": "inactive"},
@@ -207,9 +211,25 @@ def subject_options(db: Session) -> list[dict[str, str]]:
     return module_record_options(db, "subjects", ["name", "code"]) or master_options(db, "subjects")
 
 
+def teacher_options(db: Session) -> list[dict[str, str]]:
+    rows = db.scalars(
+        select(UserAccount)
+        .where(UserAccount.role == "teacher", UserAccount.active == True)
+        .order_by(UserAccount.name)
+    ).all()
+    return [{"label": row.name, "value": row.name} for row in rows]
+
+
 PROFILE_TYPES = ["student", "teacher", "parent", "staff", "finance", "admin"]
 ROLE_PROFILE_TYPES = ["teacher", "parent", "staff", "finance", "admin"]
-GENERIC_MODULE_KEYS = {"classes", "sections", "subjects", "exams"}
+GENERIC_MODULE_KEYS = {
+    "classes",
+    "sections",
+    "subjects",
+    "section_subjects",
+    "student_subject_choices",
+    "exams",
+}
 CORE_STUDENT_FIELDS = {
     "admission_number",
     "full_name",
@@ -548,6 +568,8 @@ def can_create_record(module_key: str, role: str) -> bool:
         "classes": role in ["admin", "super_admin"],
         "sections": role in ["admin", "super_admin"],
         "subjects": role in ["admin", "super_admin"],
+        "section_subjects": role in ["admin", "super_admin"],
+        "student_subject_choices": role in ["admin", "super_admin"],
         "exams": role in ["admin", "super_admin"],
         "attendance": role in ["teacher", "admin", "super_admin"],
         "fees": role in ["finance", "admin", "super_admin"],
@@ -562,6 +584,8 @@ def can_edit_record(module_key: str, role: str) -> bool:
         "classes": role in ["admin", "super_admin"],
         "sections": role in ["admin", "super_admin"],
         "subjects": role in ["admin", "super_admin"],
+        "section_subjects": role in ["admin", "super_admin"],
+        "student_subject_choices": role in ["admin", "super_admin"],
         "exams": role in ["admin", "super_admin"],
         "attendance": role in ["teacher", "admin", "super_admin"],
         "fees": role in ["finance", "admin", "super_admin"],
@@ -576,6 +600,8 @@ def can_delete_record(module_key: str, role: str) -> bool:
         "classes": role in ["admin", "super_admin"],
         "sections": role in ["admin", "super_admin"],
         "subjects": role in ["admin", "super_admin"],
+        "section_subjects": role in ["admin", "super_admin"],
+        "student_subject_choices": role in ["admin", "super_admin"],
         "exams": role in ["admin", "super_admin"],
         "attendance": role in ["teacher", "admin", "super_admin"],
         "fees": role in ["finance", "admin", "super_admin"],
@@ -596,6 +622,8 @@ def ensure_record_permission(module_key: str, role: str, action: str) -> None:
             "classes": "Classes require admin role",
             "sections": "Sections require admin role",
             "subjects": "Subjects require admin role",
+            "section_subjects": "Section subjects require admin role",
+            "student_subject_choices": "Student subject choices require admin role",
             "exams": "Exams require admin role",
             "attendance": "Attendance requires teacher/admin role",
             "fees": "Fees require finance/admin role",

@@ -71,6 +71,8 @@ const workingModules = new Set([
   "classes",
   "sections",
   "subjects",
+  "section_subjects",
+  "student_subject_choices",
   "students",
   "teachers",
   "attendance",
@@ -98,7 +100,18 @@ function roleLabel(role: string) {
 }
 
 function defaultValues(moduleKey: string): Record<string, string> {
-  if (["classes", "sections", "subjects", "students", "teachers", "exams"].includes(moduleKey)) {
+  if (
+    [
+      "classes",
+      "sections",
+      "subjects",
+      "section_subjects",
+      "student_subject_choices",
+      "students",
+      "teachers",
+      "exams"
+    ].includes(moduleKey)
+  ) {
     return { status: "active" };
   }
   return {};

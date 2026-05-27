@@ -737,6 +737,8 @@ export function AdminConfigBuilder({
     "classes",
     "sections",
     "subjects",
+    "section_subjects",
+    "student_subject_choices",
     "students",
     "teachers",
     "attendance",

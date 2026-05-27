@@ -231,6 +231,8 @@ def core_modules() -> list[tuple[str, str, str, str, str]]:
         ("classes", "Classes", "Academic years, grades, and active class groups.", "BookOpen", "sky"),
         ("sections", "Sections", "Class sections with capacity, rooms, and class teacher context.", "LayoutDashboard", "teal"),
         ("subjects", "Subjects", "Subjects that can be assigned to teachers and exams.", "BookOpen", "violet"),
+        ("section_subjects", "Section Subjects", "Subjects offered for a class section, including teachers and choice type.", "BookOpen", "emerald"),
+        ("student_subject_choices", "Student Subject Choices", "Student-level subject choices such as second language or electives.", "GraduationCap", "amber"),
         ("students", "Students", "Identity, guardians, classes, and learner context.", "GraduationCap", "cyan"),
         ("teachers", "Teachers", "Teacher profiles, login access, and class or subject assignments.", "Users", "rose"),
         ("attendance", "Attendance", "Daily marking, risk detection, and interventions.", "ClipboardCheck", "emerald"),
@@ -263,6 +265,22 @@ def core_module_fields() -> dict[str, list[tuple[str, str, str, bool, bool]]]:
             ("name", "Subject Name", "text", True, True),
             ("code", "Subject Code", "text", True, False),
             ("department", "Department", "text", True, False),
+            ("status", "Status", "text", True, False),
+        ],
+        "section_subjects": [
+            ("class_name", "Class", "select", True, True),
+            ("section", "Section", "select", True, True),
+            ("subject", "Subject", "select", True, True),
+            ("teacher", "Teacher", "select", True, False),
+            ("subject_type", "Subject Type", "select", True, True),
+            ("academic_year", "Academic Year", "text", True, False),
+            ("status", "Status", "text", True, False),
+        ],
+        "student_subject_choices": [
+            ("student", "Student", "select", True, True),
+            ("subject_type", "Subject Type", "select", True, True),
+            ("subject", "Subject", "select", True, True),
+            ("academic_year", "Academic Year", "text", True, False),
             ("status", "Status", "text", True, False),
         ],
         "students": [
@@ -310,8 +328,8 @@ def core_module_fields() -> dict[str, list[tuple[str, str, str, bool, bool]]]:
 
 def core_role_modules() -> dict[str, list[str]]:
     return {
-        "super_admin": ["classes", "sections", "subjects", "students", "teachers", "attendance", "fees", "exams", "analytics", "configuration"],
-        "admin": ["classes", "sections", "subjects", "students", "teachers", "attendance", "fees", "exams", "messages", "analytics", "configuration"],
+        "super_admin": ["classes", "sections", "subjects", "section_subjects", "student_subject_choices", "students", "teachers", "attendance", "fees", "exams", "analytics", "configuration"],
+        "admin": ["classes", "sections", "subjects", "section_subjects", "student_subject_choices", "students", "teachers", "attendance", "fees", "exams", "messages", "analytics", "configuration"],
         "teacher": ["students", "attendance", "exams", "timetable", "messages"],
         "student": ["attendance", "timetable", "exams", "messages"],
         "parent": ["attendance", "fees", "messages"],
@@ -408,6 +426,7 @@ def ensure_master_data(db: Session) -> None:
         ("fee_types", "Fee Types", "Fee names used while creating invoices."),
         ("attendance_statuses", "Attendance Statuses", "Allowed attendance status values."),
         ("subjects", "Subjects", "Subjects used in teacher class assignments."),
+        ("subject_types", "Subject Types", "Subject offering categories such as common or second language."),
         ("teacher_assignment_roles", "Teacher Assignment Roles", "Teacher responsibility types."),
     ]
     defaults = {
@@ -416,6 +435,7 @@ def ensure_master_data(db: Session) -> None:
         "fee_types": ["Admission Fee", "Term Fee", "Transport Fee", "Exam Fee"],
         "attendance_statuses": ["Present", "Absent", "Late"],
         "subjects": ["Maths", "Science", "English", "Social Studies", "Homeroom"],
+        "subject_types": ["Common", "Second Language", "Elective"],
         "teacher_assignment_roles": ["Subject Teacher", "Class Teacher", "Coordinator", "Principal Oversight"],
     }
     for key, label, description in sets:
@@ -430,7 +450,7 @@ def ensure_master_data(db: Session) -> None:
         }
         for index, label_value in enumerate(defaults[key]):
             value = label_value.lower().replace(" ", "_")
-            if key in ["classes", "sections", "fee_types", "subjects", "teacher_assignment_roles"]:
+            if key in ["classes", "sections", "fee_types", "subjects", "subject_types", "teacher_assignment_roles"]:
                 value = label_value
             if key == "attendance_statuses":
                 value = label_value.lower()
