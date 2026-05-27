@@ -266,6 +266,7 @@ export function AdminConfigBuilder({
   const [masterData, setMasterData] = useState<MasterDataSet[]>([]);
   const [profileFields, setProfileFields] = useState<ProfileFieldGroup[]>([]);
   const [activeProfileType, setActiveProfileType] = useState("student");
+  const [activeModuleKey, setActiveModuleKey] = useState("classes");
   const [newField, setNewField] = useState<NewField>(emptyField);
   const [userForm, setUserForm] = useState<UserForm>(emptyUser);
   const [roleProfileForm, setRoleProfileForm] = useState<RoleProfileForm>(emptyRoleProfile);
@@ -621,7 +622,7 @@ export function AdminConfigBuilder({
     });
   }
 
-  async function addStudentField() {
+  async function addModuleField() {
     if (!newField.key.trim() || !newField.label.trim()) {
       setSaved("");
       setError("Field key and label are required");
@@ -636,11 +637,11 @@ export function AdminConfigBuilder({
       setError("Add at least one LOV option for a select field");
       return;
     }
-    await runSave("add-student-field", async () => {
+    await runSave("add-module-field", async () => {
       await apiPost(
-        "/api/config/modules/students/fields/add",
+        `/api/config/modules/${activeModuleKey}/fields/add`,
         {
-          module_key: "students",
+          module_key: activeModuleKey,
           key: newField.key.trim(),
           label: newField.label.trim(),
           field_type: newField.field_type,
@@ -650,7 +651,7 @@ export function AdminConfigBuilder({
         },
         token
       );
-      setSaved("Student custom field added");
+      setSaved("Module field added");
       setNewField(emptyField);
       await load();
       await onSaved?.();
@@ -732,7 +733,19 @@ export function AdminConfigBuilder({
     });
   }
 
-  const studentsModule = modules.find((module) => module.key === "students");
+  const configurableModuleKeys = [
+    "classes",
+    "sections",
+    "subjects",
+    "students",
+    "teachers",
+    "attendance",
+    "fees",
+    "exams",
+    "configuration"
+  ];
+  const configurableModules = modules.filter((module) => configurableModuleKeys.includes(module.key));
+  const activeModule = configurableModules.find((module) => module.key === activeModuleKey) ?? configurableModules[0];
   const needsStudentLink = userForm.role === "student" || userForm.role === "parent";
   const activeProfileGroup = profileFields.find((group) => group.profile_type === activeProfileType);
   const roleProfileTypeValues = roleProfiles.profile_types.map((type) => type.value);
@@ -1534,14 +1547,12 @@ export function AdminConfigBuilder({
 
       {activeTab === "modules" ? (
       <article className={cardClass}>
-        <h2 className="text-lg font-semibold">Visible Modules</h2>
+        <h2 className="text-lg font-semibold">Modules</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Keep only complete, usable modules visible to users.
+          Enable core modules and extend their fields without changing frontend code.
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {modules
-            .filter((module) => ["students", "teachers", "attendance", "fees", "configuration"].includes(module.key))
-            .map((module) => (
+          {configurableModules.map((module) => (
               <div className="rounded-2xl border border-[#eadcc9] bg-white/55 p-4" key={module.key}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -1558,6 +1569,157 @@ export function AdminConfigBuilder({
               </div>
             ))}
         </div>
+        {activeModule ? (
+          <div className="mt-6 rounded-2xl border border-[#eadcc9] bg-white/55 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">Field Configuration</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Add or adjust fields for the selected module.
+                </p>
+              </div>
+              <select
+                className={inputClass}
+                value={activeModule.key}
+                onChange={(event) => {
+                  setActiveModuleKey(event.target.value);
+                  setNewField(emptyField);
+                }}
+              >
+                {configurableModules.map((module) => (
+                  <option key={module.key} value={module.key}>
+                    {module.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="mt-4 space-y-3">
+              {activeModule.fields.map((field) => (
+                <div
+                  className="grid gap-3 rounded-2xl border border-[#eadcc9] bg-white/60 p-3 md:grid-cols-[1fr_110px_110px_80px]"
+                  key={field.id}
+                >
+                  <label className="text-sm font-medium text-slate-700">
+                    Label
+                    <input
+                      className={inputClass}
+                      value={field.label}
+                      onChange={(event) =>
+                        updateField(activeModule.key, field.id, { label: event.target.value })
+                      }
+                    />
+                    <span className="mt-1 block text-xs text-slate-400">
+                      {field.key} - {field.type}
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2 self-center text-sm font-medium text-slate-700">
+                    <input
+                      checked={field.visible}
+                      type="checkbox"
+                      onChange={(event) =>
+                        updateField(activeModule.key, field.id, { visible: event.target.checked })
+                      }
+                    />
+                    Visible
+                  </label>
+                  <label className="flex items-center gap-2 self-center text-sm font-medium text-slate-700">
+                    <input
+                      checked={field.required}
+                      type="checkbox"
+                      onChange={(event) =>
+                        updateField(activeModule.key, field.id, { required: event.target.checked })
+                      }
+                    />
+                    Required
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Order
+                    <input
+                      className={inputClass}
+                      type="number"
+                      value={field.order}
+                      onChange={(event) =>
+                        updateField(activeModule.key, field.id, { order: Number(event.target.value) })
+                      }
+                    />
+                  </label>
+                </div>
+              ))}
+            </div>
+            <button
+              className="mt-4 rounded-2xl border border-[#e6d6bf] bg-white/70 px-4 py-2 text-sm font-semibold text-slate-700"
+              onClick={() => saveFields(activeModule)}
+            >
+              Save {activeModule.label} Fields
+            </button>
+            <div className="mt-5 grid gap-3 rounded-2xl border border-[#eadcc9] bg-white/60 p-4 md:grid-cols-3">
+              <label className="text-sm font-medium text-slate-700">
+                Field Key
+                <input
+                  className={inputClass}
+                  placeholder="short_name"
+                  value={newField.key}
+                  onChange={(event) => setNewField({ ...newField, key: event.target.value })}
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Label
+                <input
+                  className={inputClass}
+                  placeholder="Short Name"
+                  value={newField.label}
+                  onChange={(event) => setNewField({ ...newField, label: event.target.value })}
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Type
+                <select
+                  className={inputClass}
+                  value={newField.field_type}
+                  onChange={(event) => setNewField({ ...newField, field_type: event.target.value })}
+                >
+                  <option value="text">Text</option>
+                  <option value="number">Number</option>
+                  <option value="date">Date</option>
+                  <option value="select">Select / LOV</option>
+                </select>
+              </label>
+              {newField.field_type === "select" ? (
+                <label className="text-sm font-medium text-slate-700 md:col-span-3">
+                  LOV Options
+                  <input
+                    className={inputClass}
+                    placeholder="Option A, Option B"
+                    value={newField.optionsText}
+                    onChange={(event) => setNewField({ ...newField, optionsText: event.target.value })}
+                  />
+                </label>
+              ) : null}
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  checked={newField.visible}
+                  type="checkbox"
+                  onChange={(event) => setNewField({ ...newField, visible: event.target.checked })}
+                />
+                Visible
+              </label>
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  checked={newField.required}
+                  type="checkbox"
+                  onChange={(event) => setNewField({ ...newField, required: event.target.checked })}
+                />
+                Required
+              </label>
+              <button
+                className="rounded-2xl bg-[#173b45] px-4 py-2.5 text-sm font-semibold text-white"
+                onClick={addModuleField}
+              >
+                Add Field
+              </button>
+            </div>
+          </div>
+        ) : null}
       </article>
       ) : null}
     </section>

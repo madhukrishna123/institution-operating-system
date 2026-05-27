@@ -67,7 +67,17 @@ type AgentWork = {
   audit_trail: string;
 };
 
-const workingModules = new Set(["students", "teachers", "attendance", "fees", "configuration"]);
+const workingModules = new Set([
+  "classes",
+  "sections",
+  "subjects",
+  "students",
+  "teachers",
+  "attendance",
+  "fees",
+  "exams",
+  "configuration"
+]);
 
 const icons = {
   BookOpen,
@@ -88,7 +98,7 @@ function roleLabel(role: string) {
 }
 
 function defaultValues(moduleKey: string): Record<string, string> {
-  if (moduleKey === "students") {
+  if (["classes", "sections", "subjects", "students", "teachers", "exams"].includes(moduleKey)) {
     return { status: "active" };
   }
   return {};

@@ -13,6 +13,7 @@ from app.modules.platform.models import (
     AgentWorkItem,
     ApprovalRule,
     ConfigModule,
+    GenericModuleRecord,
     Institution,
     ModuleField,
     ModuleFieldOption,

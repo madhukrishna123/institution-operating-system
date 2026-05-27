@@ -228,11 +228,14 @@ def seed_platform(db: Session) -> None:
 
 def core_modules() -> list[tuple[str, str, str, str, str]]:
     return [
+        ("classes", "Classes", "Academic years, grades, and active class groups.", "BookOpen", "sky"),
+        ("sections", "Sections", "Class sections with capacity, rooms, and class teacher context.", "LayoutDashboard", "teal"),
+        ("subjects", "Subjects", "Subjects that can be assigned to teachers and exams.", "BookOpen", "violet"),
         ("students", "Students", "Identity, guardians, classes, and learner context.", "GraduationCap", "cyan"),
         ("teachers", "Teachers", "Teacher profiles, login access, and class or subject assignments.", "Users", "rose"),
         ("attendance", "Attendance", "Daily marking, risk detection, and interventions.", "ClipboardCheck", "emerald"),
         ("fees", "Fees", "Invoices, balances, dues, and payment follow-up.", "CircleDollarSign", "amber"),
-        ("exams", "Exams", "Assessments, marks, grades, and intervention triggers.", "BookOpen", "violet"),
+        ("exams", "Exams", "Assessments, schedules, terms, and class applicability.", "CalendarDays", "amber"),
         ("timetable", "Timetable", "Classes, teachers, rooms, and schedule conflicts.", "CalendarDays", "sky"),
         ("staff", "Staff", "Employee records, roles, leave, and duty planning.", "Users", "rose"),
         ("messages", "Messages", "Parent communication, multilingual drafts, and approvals.", "MessageSquareText", "teal"),
@@ -243,6 +246,25 @@ def core_modules() -> list[tuple[str, str, str, str, str]]:
 
 def core_module_fields() -> dict[str, list[tuple[str, str, str, bool, bool]]]:
     return {
+        "classes": [
+            ("name", "Class Name", "text", True, True),
+            ("academic_year", "Academic Year", "text", True, False),
+            ("status", "Status", "text", True, False),
+        ],
+        "sections": [
+            ("class_name", "Class", "select", True, True),
+            ("name", "Section Name", "text", True, True),
+            ("class_teacher", "Class Teacher", "text", True, False),
+            ("room", "Room", "text", True, False),
+            ("capacity", "Capacity", "number", True, False),
+            ("status", "Status", "text", True, False),
+        ],
+        "subjects": [
+            ("name", "Subject Name", "text", True, True),
+            ("code", "Subject Code", "text", True, False),
+            ("department", "Department", "text", True, False),
+            ("status", "Status", "text", True, False),
+        ],
         "students": [
             ("admission_number", "Admission No.", "text", True, True),
             ("full_name", "Full Name", "text", True, True),
@@ -275,13 +297,21 @@ def core_module_fields() -> dict[str, list[tuple[str, str, str, bool, bool]]]:
             ("balance", "Balance", "number", True, False),
             ("status", "Status", "text", True, False),
         ],
+        "exams": [
+            ("name", "Exam Name", "text", True, True),
+            ("term", "Term", "text", True, False),
+            ("class_name", "Class", "select", True, False),
+            ("start_date", "Start Date", "date", True, False),
+            ("end_date", "End Date", "date", True, False),
+            ("status", "Status", "text", True, False),
+        ],
     }
 
 
 def core_role_modules() -> dict[str, list[str]]:
     return {
-        "super_admin": ["students", "teachers", "attendance", "fees", "analytics", "configuration"],
-        "admin": ["students", "teachers", "attendance", "fees", "messages", "analytics", "configuration"],
+        "super_admin": ["classes", "sections", "subjects", "students", "teachers", "attendance", "fees", "exams", "analytics", "configuration"],
+        "admin": ["classes", "sections", "subjects", "students", "teachers", "attendance", "fees", "exams", "messages", "analytics", "configuration"],
         "teacher": ["students", "attendance", "exams", "timetable", "messages"],
         "student": ["attendance", "timetable", "exams", "messages"],
         "parent": ["attendance", "fees", "messages"],

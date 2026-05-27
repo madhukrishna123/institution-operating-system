@@ -70,6 +70,14 @@ class ModuleRecordValue(Base):
     value: Mapped[str] = mapped_column(Text, default="")
 
 
+class GenericModuleRecord(Base):
+    __tablename__ = "generic_module_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    module_key: Mapped[str] = mapped_column(String(80), index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 class ProfileFieldDefinition(Base):
     __tablename__ = "profile_field_definitions"
 

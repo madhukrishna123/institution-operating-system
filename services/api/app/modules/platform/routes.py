@@ -17,6 +17,7 @@ from app.modules.fees.models import Invoice
 from app.modules.platform.models import (
     AgentWorkItem,
     ConfigModule,
+    GenericModuleRecord,
     Institution,
     MasterDataOption,
     MasterDataSet,
@@ -94,10 +95,6 @@ def current_user(
 
 def field_config(db: Session, module_key: str) -> list[dict]:
     query = select(ModuleField).where(ModuleField.module_key == module_key, ModuleField.visible == True)
-    if module_key == "students":
-        query = query.where(ModuleField.key.in_(CORE_STUDENT_FIELDS))
-    if module_key == "teachers":
-        query = query.where(ModuleField.key.in_(CORE_TEACHER_FIELDS))
     fields = db.scalars(query.order_by(ModuleField.order)).all()
     configured_fields = [
         with_field_options(db, {
@@ -127,11 +124,11 @@ def field_config(db: Session, module_key: str) -> list[dict]:
 
 def with_field_options(db: Session, field: dict) -> dict:
     option_sets = {
-        "class_name": master_options(db, "classes"),
-        "section": master_options(db, "sections"),
-        "assignment_class": master_options(db, "classes"),
-        "assignment_section": master_options(db, "sections"),
-        "assignment_subject": master_options(db, "subjects"),
+        "class_name": class_options(db),
+        "section": section_options(db),
+        "assignment_class": class_options(db),
+        "assignment_section": section_options(db),
+        "assignment_subject": subject_options(db),
         "assignment_role": master_options(db, "teacher_assignment_roles"),
         "status": [
             {"label": "Active", "value": "active"},
@@ -167,8 +164,52 @@ def master_options(db: Session, set_key: str) -> list[dict[str, str]]:
     return [{"label": row.label, "value": row.value} for row in rows]
 
 
+def generic_record_values(db: Session, module_key: str, record_id: int) -> dict[str, str]:
+    rows = db.scalars(
+        select(ModuleRecordValue).where(
+            ModuleRecordValue.module_key == module_key,
+            ModuleRecordValue.record_id == record_id,
+        )
+    ).all()
+    return {row.field_key: row.value for row in rows}
+
+
+def module_record_options(
+    db: Session,
+    module_key: str,
+    label_keys: list[str],
+    value_key: str = "name",
+) -> list[dict[str, str]]:
+    rows = db.scalars(
+        select(GenericModuleRecord)
+        .where(GenericModuleRecord.module_key == module_key, GenericModuleRecord.active == True)
+        .order_by(GenericModuleRecord.id)
+    ).all()
+    options = []
+    for row in rows:
+        values = generic_record_values(db, module_key, row.id)
+        value = values.get(value_key) or values.get("name") or str(row.id)
+        label_parts = [values.get(key, "") for key in label_keys]
+        label = " - ".join([part for part in label_parts if part]) or value
+        options.append({"label": label, "value": value})
+    return options
+
+
+def class_options(db: Session) -> list[dict[str, str]]:
+    return module_record_options(db, "classes", ["name", "academic_year"]) or master_options(db, "classes")
+
+
+def section_options(db: Session) -> list[dict[str, str]]:
+    return module_record_options(db, "sections", ["class_name", "name"]) or master_options(db, "sections")
+
+
+def subject_options(db: Session) -> list[dict[str, str]]:
+    return module_record_options(db, "subjects", ["name", "code"]) or master_options(db, "subjects")
+
+
 PROFILE_TYPES = ["student", "teacher", "parent", "staff", "finance", "admin"]
 ROLE_PROFILE_TYPES = ["teacher", "parent", "staff", "finance", "admin"]
+GENERIC_MODULE_KEYS = {"classes", "sections", "subjects", "exams"}
 CORE_STUDENT_FIELDS = {
     "admission_number",
     "full_name",
@@ -275,10 +316,6 @@ def save_profile_custom_values(
 
 def all_field_config(db: Session, module_key: str) -> list[dict]:
     query = select(ModuleField).where(ModuleField.module_key == module_key)
-    if module_key == "students":
-        query = query.where(ModuleField.key.in_(CORE_STUDENT_FIELDS))
-    if module_key == "teachers":
-        query = query.where(ModuleField.key.in_(CORE_TEACHER_FIELDS))
     fields = db.scalars(query.order_by(ModuleField.order)).all()
     return [
         with_field_options(db, {
@@ -315,6 +352,36 @@ def custom_values(db: Session, module_key: str, record_id: int) -> dict[str, str
     return values
 
 
+def save_module_record_values(
+    db: Session,
+    module_key: str,
+    record_id: int,
+    fields: list[dict],
+    payload: dict,
+) -> None:
+    valid_keys = {field["key"] for field in fields}
+    for key in valid_keys:
+        value = str(payload.get(key) or "").strip()
+        existing = db.scalar(
+            select(ModuleRecordValue).where(
+                ModuleRecordValue.module_key == module_key,
+                ModuleRecordValue.record_id == record_id,
+                ModuleRecordValue.field_key == key,
+            )
+        )
+        if existing:
+            existing.value = value
+        else:
+            db.add(
+                ModuleRecordValue(
+                    module_key=module_key,
+                    record_id=record_id,
+                    field_key=key,
+                    value=value,
+                )
+            )
+
+
 def save_custom_values(
     db: Session,
     module_key: str,
@@ -330,9 +397,17 @@ def save_custom_values(
         "guardian_name",
         "status",
     }
+    core_teacher_fields = CORE_TEACHER_FIELDS | {
+        "password",
+        "assignment_class",
+        "assignment_section",
+        "assignment_subject",
+        "assignment_role",
+    }
+    skip_keys = core_teacher_fields if module_key == "teachers" else core_student_fields
     for field in fields:
         key = field["key"]
-        if key in core_student_fields:
+        if key in skip_keys:
             continue
         value = str(payload.get(key) or "").strip()
         if module_key == "students" and field.get("source") == "profile_custom":
@@ -455,12 +530,14 @@ def create_fields(db: Session, module_key: str) -> list[dict]:
         base_keys = {field["key"] for field in base_fields}
         extra_fields = [
             {"key": "password", "label": "Password", "type": "text", "required": False},
-            {"key": "assignment_class", "label": "Assigned Class", "type": "select", "required": False, "options": master_options(db, "classes")},
-            {"key": "assignment_section", "label": "Assigned Section", "type": "select", "required": False, "options": master_options(db, "sections")},
-            {"key": "assignment_subject", "label": "Subject", "type": "select", "required": False, "options": master_options(db, "subjects")},
+            {"key": "assignment_class", "label": "Assigned Class", "type": "select", "required": False, "options": class_options(db)},
+            {"key": "assignment_section", "label": "Assigned Section", "type": "select", "required": False, "options": section_options(db)},
+            {"key": "assignment_subject", "label": "Subject", "type": "select", "required": False, "options": subject_options(db)},
             {"key": "assignment_role", "label": "Assignment Role", "type": "select", "required": False, "options": master_options(db, "teacher_assignment_roles")},
         ]
         return base_fields + [field for field in extra_fields if field["key"] not in base_keys]
+    if module_key in GENERIC_MODULE_KEYS:
+        return field_config(db, module_key)
     return []
 
 
@@ -468,6 +545,10 @@ def can_create_record(module_key: str, role: str) -> bool:
     allowed = {
         "students": role in ["admin", "super_admin"],
         "teachers": role in ["admin", "super_admin"],
+        "classes": role in ["admin", "super_admin"],
+        "sections": role in ["admin", "super_admin"],
+        "subjects": role in ["admin", "super_admin"],
+        "exams": role in ["admin", "super_admin"],
         "attendance": role in ["teacher", "admin", "super_admin"],
         "fees": role in ["finance", "admin", "super_admin"],
     }
@@ -478,6 +559,10 @@ def can_edit_record(module_key: str, role: str) -> bool:
     allowed = {
         "students": role in ["teacher", "admin", "super_admin"],
         "teachers": role in ["admin", "super_admin"],
+        "classes": role in ["admin", "super_admin"],
+        "sections": role in ["admin", "super_admin"],
+        "subjects": role in ["admin", "super_admin"],
+        "exams": role in ["admin", "super_admin"],
         "attendance": role in ["teacher", "admin", "super_admin"],
         "fees": role in ["finance", "admin", "super_admin"],
     }
@@ -488,6 +573,10 @@ def can_delete_record(module_key: str, role: str) -> bool:
     allowed = {
         "students": role in ["admin", "super_admin"],
         "teachers": role in ["admin", "super_admin"],
+        "classes": role in ["admin", "super_admin"],
+        "sections": role in ["admin", "super_admin"],
+        "subjects": role in ["admin", "super_admin"],
+        "exams": role in ["admin", "super_admin"],
         "attendance": role in ["teacher", "admin", "super_admin"],
         "fees": role in ["finance", "admin", "super_admin"],
     }
@@ -504,6 +593,10 @@ def ensure_record_permission(module_key: str, role: str, action: str) -> None:
         labels = {
             "students": "Teachers can only edit student class and section. Admin role is required for other student changes.",
             "teachers": "Teachers require admin role",
+            "classes": "Classes require admin role",
+            "sections": "Sections require admin role",
+            "subjects": "Subjects require admin role",
+            "exams": "Exams require admin role",
             "attendance": "Attendance requires teacher/admin role",
             "fees": "Fees require finance/admin role",
         }
@@ -819,9 +912,9 @@ def teacher_assignment_options(db: Session) -> dict:
     ).all()
     return {
         "teachers": [{"label": teacher.name, "value": teacher.id} for teacher in teachers],
-        "classes": master_options(db, "classes"),
-        "sections": master_options(db, "sections"),
-        "subjects": master_options(db, "subjects"),
+        "classes": class_options(db),
+        "sections": section_options(db),
+        "subjects": subject_options(db),
         "assignment_roles": master_options(db, "teacher_assignment_roles"),
     }
 
@@ -889,7 +982,10 @@ def save_primary_teacher_assignment(db: Session, teacher_user_id: int, payload: 
 def serialize_teacher_record(db: Session, account: UserAccount) -> dict:
     profile = ensure_role_profile(db, account, "teacher")
     assignment = primary_teacher_assignment(db, account.id)
-    custom_values = profile_custom_values(db, "teacher", profile.id)
+    teacher_custom_values = {
+        **custom_values(db, "teachers", account.id),
+        **profile_custom_values(db, "teacher", profile.id),
+    }
     return {
         "id": account.id,
         "name": account.name,
@@ -906,7 +1002,7 @@ def serialize_teacher_record(db: Session, account: UserAccount) -> dict:
         "assignment_subject": assignment.subject if assignment else "",
         "assignment_role": assignment.assignment_role if assignment else "Subject Teacher",
         "assignment_summary": teacher_assignments_summary(db, account.id) or "-",
-        **custom_values,
+        **teacher_custom_values,
     }
 
 
@@ -1672,6 +1768,19 @@ def module_records(
             for invoice, student_name in rows
             if user.role not in ["student", "parent"] or invoice.student_id == user.linked_student_id
         ]
+    elif module_key in GENERIC_MODULE_KEYS:
+        rows = db.scalars(
+            select(GenericModuleRecord)
+            .where(GenericModuleRecord.module_key == module_key)
+            .order_by(GenericModuleRecord.id.desc())
+        ).all()
+        records = [
+            {
+                "id": row.id,
+                **generic_record_values(db, module_key, row.id),
+            }
+            for row in rows
+        ]
     else:
         records = []
 
@@ -1811,6 +1920,7 @@ def create_module_record(
         profile.contact_email = str(payload.get("contact_email") or "").strip().lower()
         profile.whatsapp_number = str(payload.get("whatsapp_number") or "").strip()
         profile.active = account.active
+        save_custom_values(db, "teachers", account.id, teacher_fields, payload)
         save_profile_custom_values(db, "teacher", profile.id, payload)
         save_primary_teacher_assignment(db, account.id, payload)
         db.commit()
@@ -1833,6 +1943,19 @@ def create_module_record(
         db.add(invoice)
         db.commit()
         return {"status": "created", "id": invoice.id}
+    if module_key in GENERIC_MODULE_KEYS:
+        ensure_record_permission(module_key, user.role, "create")
+        fields = create_fields(db, module_key)
+        validate_required_fields(fields, payload)
+        row = GenericModuleRecord(
+            module_key=module_key,
+            active=str(payload.get("status") or "active").strip().lower() != "inactive",
+        )
+        db.add(row)
+        db.flush()
+        save_module_record_values(db, module_key, row.id, fields, payload)
+        db.commit()
+        return {"status": "created", "id": row.id}
     raise HTTPException(status_code=400, detail="Generic create is not enabled for this module yet")
 
 
@@ -1922,6 +2045,7 @@ def update_module_record(
         profile.contact_email = str(payload.get("contact_email") or "").strip().lower()
         profile.whatsapp_number = str(payload.get("whatsapp_number") or "").strip()
         profile.active = account.active
+        save_custom_values(db, "teachers", account.id, teacher_fields, payload)
         save_profile_custom_values(db, "teacher", profile.id, payload)
         save_primary_teacher_assignment(db, account.id, payload)
     elif module_key == "attendance":
@@ -1950,6 +2074,14 @@ def update_module_record(
         invoice.amount = amount
         invoice.paid_amount = paid_amount
         invoice.status = str(payload.get("status") or ("paid" if paid_amount >= amount else "due")).strip()
+    elif module_key in GENERIC_MODULE_KEYS:
+        row = db.get(GenericModuleRecord, record_id)
+        if not row or row.module_key != module_key:
+            raise HTTPException(status_code=404, detail="Record not found")
+        fields = create_fields(db, module_key)
+        validate_required_fields(fields, payload)
+        row.active = str(payload.get("status") or "active").strip().lower() != "inactive"
+        save_module_record_values(db, module_key, row.id, fields, payload)
     else:
         raise HTTPException(status_code=400, detail="Update is not enabled for this module yet")
     db.commit()
@@ -2010,6 +2142,10 @@ def delete_module_record(
                 ProfileFieldValue.profile_id == profile.id,
             ).delete()
             db.delete(profile)
+        db.query(ModuleRecordValue).filter(
+            ModuleRecordValue.module_key == "teachers",
+            ModuleRecordValue.record_id == account.id,
+        ).delete()
         db.query(TeacherAssignment).filter(TeacherAssignment.teacher_user_id == account.id).delete()
         db.delete(account)
     elif module_key == "attendance":
@@ -2030,6 +2166,15 @@ def delete_module_record(
         if not invoice:
             raise HTTPException(status_code=404, detail="Fee record not found")
         db.delete(invoice)
+    elif module_key in GENERIC_MODULE_KEYS:
+        row = db.get(GenericModuleRecord, record_id)
+        if not row or row.module_key != module_key:
+            raise HTTPException(status_code=404, detail="Record not found")
+        db.query(ModuleRecordValue).filter(
+            ModuleRecordValue.module_key == module_key,
+            ModuleRecordValue.record_id == record_id,
+        ).delete()
+        db.delete(row)
     else:
         raise HTTPException(status_code=400, detail="Delete is not enabled for this module yet")
     db.commit()
