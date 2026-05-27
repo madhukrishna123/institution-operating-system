@@ -141,6 +141,7 @@ def with_field_options(db: Session, field: dict) -> dict:
         "assignment_role": master_options(db, "teacher_assignment_roles"),
         "subject": subject_options(db),
         "teacher": teacher_options(db),
+        "class_teacher": teacher_options(db),
         "student": student_options(db),
         "subject_type": master_options(db, "subject_types"),
         "status": [
@@ -401,6 +402,74 @@ def save_module_record_values(
                     value=value,
                 )
             )
+
+
+def sync_section_class_teacher_assignment(db: Session, record_id: int, payload: dict) -> None:
+    class_name = str(payload.get("class_name") or "").strip()
+    section = str(payload.get("name") or "").strip()
+    teacher_name = str(payload.get("class_teacher") or "").strip()
+    if not class_name or not section:
+        return
+    existing_for_section = db.scalars(
+        select(TeacherAssignment).where(
+            TeacherAssignment.class_name == class_name,
+            TeacherAssignment.section == section,
+            TeacherAssignment.assignment_role == "Class Teacher",
+        )
+    ).all()
+    teacher = (
+        db.scalar(
+            select(UserAccount).where(
+                UserAccount.role == "teacher",
+                UserAccount.active == True,
+                UserAccount.name == teacher_name,
+            )
+        )
+        if teacher_name
+        else None
+    )
+    if not teacher:
+        for assignment in existing_for_section:
+            assignment.active = False
+        return
+    for assignment in existing_for_section:
+        if assignment.teacher_user_id != teacher.id:
+            assignment.active = False
+    row = db.scalar(
+        select(TeacherAssignment).where(
+            TeacherAssignment.teacher_user_id == teacher.id,
+            TeacherAssignment.class_name == class_name,
+            TeacherAssignment.section == section,
+            TeacherAssignment.assignment_role == "Class Teacher",
+        )
+    )
+    if not row:
+        subject = "Homeroom"
+        for candidate in db.scalars(
+            select(GenericModuleRecord)
+            .where(GenericModuleRecord.module_key == "section_subjects")
+            .order_by(GenericModuleRecord.id)
+        ).all():
+            values = generic_record_values(db, "section_subjects", candidate.id)
+            if (
+                values.get("class_name") == class_name
+                and values.get("section") == section
+                and values.get("teacher") == teacher_name
+            ):
+                subject = values.get("subject") or subject
+                break
+        row = TeacherAssignment(
+            teacher_user_id=teacher.id,
+            class_name=class_name,
+            section=section,
+            subject=subject,
+            assignment_role="Class Teacher",
+            active=True,
+        )
+        db.add(row)
+    else:
+        row.subject = row.subject or "Homeroom"
+        row.active = True
 
 
 def save_custom_values(
@@ -1983,6 +2052,8 @@ def create_module_record(
         db.add(row)
         db.flush()
         save_module_record_values(db, module_key, row.id, fields, payload)
+        if module_key == "sections":
+            sync_section_class_teacher_assignment(db, row.id, payload)
         db.commit()
         return {"status": "created", "id": row.id}
     raise HTTPException(status_code=400, detail="Generic create is not enabled for this module yet")
@@ -2111,6 +2182,8 @@ def update_module_record(
         validate_required_fields(fields, payload)
         row.active = str(payload.get("status") or "active").strip().lower() != "inactive"
         save_module_record_values(db, module_key, row.id, fields, payload)
+        if module_key == "sections":
+            sync_section_class_teacher_assignment(db, row.id, payload)
     else:
         raise HTTPException(status_code=400, detail="Update is not enabled for this module yet")
     db.commit()
