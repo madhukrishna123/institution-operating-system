@@ -11,6 +11,15 @@ Open-source, role-aware, metadata-driven institution operating system.
 
 The current app includes seeded local login, role-specific workspaces, backend-configured navigation, metadata-rendered module records, and an attendance-to-action agent workflow.
 
+## Deployment Modes
+
+The project has two supported modes:
+
+- **VPS Docker mode**: one server runs Caddy, Next.js, FastAPI, and PostgreSQL. Use this for production.
+- **Standalone mode**: run locally, or deploy the web to Vercel and the API/database to Render, Railway, or another host. Use this for demos and early pilots.
+
+See [docs/deployment-modes.md](docs/deployment-modes.md) for the full guide.
+
 ## Run Locally
 
 Install frontend packages:
@@ -34,12 +43,14 @@ services/api/.venv/Scripts/python.exe -m pip install -r services/api/requirement
 Start the API:
 
 ```powershell
+copy .env.standalone.example .env
 scripts/run-api.cmd
 ```
 
 Start the UI:
 
 ```powershell
+copy apps\web\.env.local.example apps\web\.env.local
 scripts/run-web.cmd
 ```
 

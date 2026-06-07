@@ -1,8 +1,17 @@
 # Institution OS Deployment Runbook
 
+## Choose A Deployment Mode
+
+There are two supported modes:
+
+- **VPS Docker mode**: production-style one-server deployment with Caddy, Next.js, FastAPI, and PostgreSQL.
+- **Standalone mode**: local run, Vercel web plus external API, or short demos on Render/Railway.
+
+Start with [deployment-modes.md](deployment-modes.md) if you are deciding where to host.
+
 ## Architecture
 
-Production runs as one Docker Compose stack on a VPS.
+VPS Docker mode runs as one Docker Compose stack on a VPS.
 
 ```text
 https://yourdomain.com       -> Caddy -> Next.js web

@@ -6,7 +6,8 @@
   ],
   "scripts": {
     "dev:web": "npm --workspace apps/web run dev",
-    "build:web": "npm --workspace apps/web run build"
+    "build:web": "npm --workspace apps/web run build",
+    "start:web": "npm --workspace apps/web run start",
+    "start:web:3001": "npm --workspace apps/web exec -- next start -p 3001"
   }
 }
-
