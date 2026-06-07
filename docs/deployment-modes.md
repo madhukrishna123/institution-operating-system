@@ -74,12 +74,28 @@ Best for:
 
 Files:
 
+- `deploy-local.cmd`
 - `.env.standalone.example`
 - `apps/web/.env.local.example`
 - `scripts/run-api.cmd`
 - `scripts/run-web.cmd`
 
-Local run:
+One-command local deployment on Windows:
+
+```powershell
+deploy-local.cmd
+```
+
+This command:
+
+- creates `.env` and `apps/web/.env.local` when missing
+- installs frontend and API dependencies
+- builds the Next.js web app
+- starts FastAPI on `http://127.0.0.1:8000`
+- starts Next.js on `http://localhost:3001`
+- opens the local web app
+
+Manual local run:
 
 ```powershell
 copy .env.standalone.example .env

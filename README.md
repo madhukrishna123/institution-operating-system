@@ -22,6 +22,14 @@ See [docs/deployment-modes.md](docs/deployment-modes.md) for the full guide.
 
 ## Run Locally
 
+One-command local deployment:
+
+```powershell
+deploy-local.cmd
+```
+
+This creates local env files if missing, installs dependencies, builds the web app, starts FastAPI on `8000`, starts Next.js on `3001`, and opens the browser.
+
 Install frontend packages:
 
 ```powershell
