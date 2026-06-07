@@ -239,15 +239,20 @@ const inputClass =
 
 const cardClass = "rounded-[24px] border border-white/75 bg-white/65 p-5 shadow-sm backdrop-blur";
 
-const tabs = [
+const dailyTabs = [
   { key: "institution", label: "Institution" },
   { key: "users", label: "Users" },
   { key: "profiles", label: "Profiles" },
-  { key: "teacher-assignments", label: "Teaching Assignments" },
-  { key: "master-data", label: "Master Data" },
-  { key: "profile-fields", label: "Profile Fields" },
-  { key: "modules", label: "Modules" }
+  { key: "teacher-assignments", label: "Teaching Assignments" }
 ];
+
+const advancedTabs = [
+  { key: "master-data", label: "Reference Lists" },
+  { key: "profile-fields", label: "Custom Fields" },
+  { key: "modules", label: "Module Setup" }
+];
+
+const advancedTabKeys = new Set(advancedTabs.map((tab) => tab.key));
 
 export function AdminConfigBuilder({
   token,
@@ -280,9 +285,16 @@ export function AdminConfigBuilder({
   const [passwordReset, setPasswordReset] = useState<Record<number, string>>({});
   const [optionDrafts, setOptionDrafts] = useState<Record<string, OptionDraft>>({});
   const [activeTab, setActiveTab] = useState("institution");
+  const [showAdvancedSetup, setShowAdvancedSetup] = useState(false);
   const [savingAction, setSavingAction] = useState("");
   const [saved, setSaved] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!showAdvancedSetup && advancedTabKeys.has(activeTab)) {
+      setActiveTab("institution");
+    }
+  }, [activeTab, showAdvancedSetup]);
 
   async function load() {
     try {
@@ -808,24 +820,34 @@ export function AdminConfigBuilder({
   return (
     <section className="space-y-5">
       <div className="rounded-[28px] border border-white/75 bg-white/55 p-3 shadow-sm backdrop-blur">
-        <div className="flex flex-wrap gap-2">
-          {tabs.map((tab) => (
-            <button
-              className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                activeTab === tab.key
-                  ? "bg-[#173b45] text-white shadow-sm"
-                  : "text-slate-600 hover:bg-white/70 hover:text-slate-950"
-              }`}
-              key={tab.key}
-              onClick={() => {
-                setActiveTab(tab.key);
-                setError("");
-                setSaved("");
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
+            {[...dailyTabs, ...(showAdvancedSetup ? advancedTabs : [])].map((tab) => (
+              <button
+                className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                  activeTab === tab.key
+                    ? "bg-[#173b45] text-white shadow-sm"
+                    : "text-slate-600 hover:bg-white/70 hover:text-slate-950"
+                }`}
+                key={tab.key}
+                onClick={() => {
+                  setActiveTab(tab.key);
+                  setError("");
+                  setSaved("");
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <label className="flex cursor-pointer items-center gap-2 rounded-2xl border border-[#e6d6bf] bg-white/65 px-3 py-2 text-sm font-semibold text-slate-600">
+            <input
+              checked={showAdvancedSetup}
+              type="checkbox"
+              onChange={(event) => setShowAdvancedSetup(event.target.checked)}
+            />
+            Advanced Setup
+          </label>
         </div>
       </div>
 
@@ -1405,9 +1427,9 @@ export function AdminConfigBuilder({
 
       {activeTab === "master-data" ? (
       <article className={cardClass}>
-        <h2 className="text-lg font-semibold">Master Data LOV</h2>
+        <h2 className="text-lg font-semibold">Reference Lists</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Configure dropdown values used by Students, Attendance, and Fees.
+          Configure reusable dropdown values used by student records, attendance, fees, and assignments.
         </p>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {masterData.map((set) => {
@@ -1446,7 +1468,7 @@ export function AdminConfigBuilder({
 
       {activeTab === "profile-fields" ? (
       <article className={cardClass}>
-        <h2 className="text-lg font-semibold">Profile Fields</h2>
+        <h2 className="text-lg font-semibold">Custom Fields</h2>
         <p className="mt-1 text-sm text-slate-500">
           Custom fields are profile-specific. Student fields appear on student records; teacher and parent fields stay ready for those profile screens.
         </p>
@@ -1580,7 +1602,7 @@ export function AdminConfigBuilder({
 
       {activeTab === "modules" ? (
       <article className={cardClass}>
-        <h2 className="text-lg font-semibold">Modules</h2>
+        <h2 className="text-lg font-semibold">Module Setup</h2>
         <p className="mt-1 text-sm text-slate-500">
           Enable core modules and extend their fields without changing frontend code.
         </p>
