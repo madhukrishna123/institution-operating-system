@@ -109,32 +109,6 @@ type RoleProfilesResponse = {
   profiles: RoleProfile[];
 };
 
-type TeacherAssignment = {
-  id: number;
-  teacher_user_id: number;
-  teacher_name: string;
-  academic_year: string;
-  class_name: string;
-  section: string;
-  subject: string;
-  assignment_role: string;
-  active: boolean;
-};
-
-type TeacherAssignmentOptions = {
-  teachers: { label: string; value: number }[];
-  academic_years: { label: string; value: string }[];
-  classes: { label: string; value: string }[];
-  sections: { label: string; value: string }[];
-  subjects: { label: string; value: string }[];
-  assignment_roles: { label: string; value: string }[];
-};
-
-type TeacherAssignmentsResponse = {
-  options: TeacherAssignmentOptions;
-  assignments: TeacherAssignment[];
-};
-
 type NewField = {
   key: string;
   label: string;
@@ -170,17 +144,6 @@ type RoleProfileForm = {
   whatsapp_number: string;
   active: boolean;
   custom_values: Record<string, string>;
-};
-
-type TeacherAssignmentForm = {
-  id?: number;
-  teacher_user_id: string;
-  academic_year: string;
-  class_name: string;
-  section: string;
-  subject: string;
-  assignment_role: string;
-  active: boolean;
 };
 
 type OptionDraft = {
@@ -224,16 +187,6 @@ const emptyRoleProfile: RoleProfileForm = {
   custom_values: {}
 };
 
-const emptyTeacherAssignment: TeacherAssignmentForm = {
-  teacher_user_id: "",
-  academic_year: "",
-  class_name: "",
-  section: "",
-  subject: "",
-  assignment_role: "Subject Teacher",
-  active: true
-};
-
 const inputClass =
   "mt-1 h-10 w-full rounded-2xl border border-[#e6d6bf] bg-white/80 px-3 text-sm outline-none transition focus:border-[#173b45] focus:ring-4 focus:ring-[#d6ece8]";
 
@@ -242,8 +195,7 @@ const cardClass = "rounded-[24px] border border-white/75 bg-white/65 p-5 shadow-
 const dailyTabs = [
   { key: "institution", label: "Institution" },
   { key: "users", label: "Users" },
-  { key: "profiles", label: "Profiles" },
-  { key: "teacher-assignments", label: "Teaching Assignments" }
+  { key: "profiles", label: "Profiles" }
 ];
 
 const advancedTabs = [
@@ -269,10 +221,6 @@ export function AdminConfigBuilder({
     profile_types: [],
     profiles: []
   });
-  const [teacherAssignments, setTeacherAssignments] = useState<TeacherAssignmentsResponse>({
-    options: { teachers: [], academic_years: [], classes: [], sections: [], subjects: [], assignment_roles: [] },
-    assignments: []
-  });
   const [masterData, setMasterData] = useState<MasterDataSet[]>([]);
   const [profileFields, setProfileFields] = useState<ProfileFieldGroup[]>([]);
   const [activeProfileType, setActiveProfileType] = useState("student");
@@ -280,8 +228,6 @@ export function AdminConfigBuilder({
   const [newField, setNewField] = useState<NewField>(emptyField);
   const [userForm, setUserForm] = useState<UserForm>(emptyUser);
   const [roleProfileForm, setRoleProfileForm] = useState<RoleProfileForm>(emptyRoleProfile);
-  const [teacherAssignmentForm, setTeacherAssignmentForm] =
-    useState<TeacherAssignmentForm>(emptyTeacherAssignment);
   const [passwordReset, setPasswordReset] = useState<Record<number, string>>({});
   const [optionDrafts, setOptionDrafts] = useState<Record<string, OptionDraft>>({});
   const [activeTab, setActiveTab] = useState("institution");
@@ -304,7 +250,6 @@ export function AdminConfigBuilder({
         nextUsers,
         nextUserOptions,
         nextRoleProfiles,
-        nextTeacherAssignments,
         nextMasterData,
         nextProfileFields
       ] =
@@ -314,7 +259,6 @@ export function AdminConfigBuilder({
           apiGet<AdminUser[]>("/api/admin/users", token),
           apiGet<UserOptions>("/api/admin/user-options", token),
           apiGet<RoleProfilesResponse>("/api/admin/role-profiles", token),
-          apiGet<TeacherAssignmentsResponse>("/api/admin/teacher-assignments", token),
           apiGet<MasterDataSet[]>("/api/admin/master-data", token),
           apiGet<ProfileFieldGroup[]>("/api/config/profile-fields", token)
         ]);
@@ -323,7 +267,6 @@ export function AdminConfigBuilder({
       setUsers(nextUsers);
       setUserOptions(nextUserOptions);
       setRoleProfiles(nextRoleProfiles);
-      setTeacherAssignments(nextTeacherAssignments);
       setRoleProfileForm((current) => {
         const profileTypeValues = nextRoleProfiles.profile_types.map((type) => type.value);
         return current.profile_type && profileTypeValues.includes(current.profile_type)
@@ -497,63 +440,6 @@ export function AdminConfigBuilder({
         ...emptyRoleProfile,
         profile_type: roleProfiles.profile_types[0]?.value ?? "teacher"
       });
-      await load();
-    });
-  }
-
-  function editTeacherAssignment(assignment: TeacherAssignment) {
-    setTeacherAssignmentForm({
-      id: assignment.id,
-      teacher_user_id: String(assignment.teacher_user_id),
-      academic_year: assignment.academic_year,
-      class_name: assignment.class_name,
-      section: assignment.section,
-      subject: assignment.subject,
-      assignment_role: assignment.assignment_role,
-      active: assignment.active
-    });
-    setActiveTab("teacher-assignments");
-  }
-
-  async function saveTeacherAssignment() {
-    if (!teacherAssignmentForm.teacher_user_id) {
-      setSaved("");
-      setError("Select a teacher first");
-      return;
-    }
-    await runSave("teacher-assignment", async () => {
-      const payload = {
-        teacher_user_id: Number(teacherAssignmentForm.teacher_user_id),
-        academic_year: teacherAssignmentForm.academic_year,
-        class_name: teacherAssignmentForm.class_name,
-        section: teacherAssignmentForm.section,
-        subject: teacherAssignmentForm.subject,
-        assignment_role: teacherAssignmentForm.assignment_role,
-        active: teacherAssignmentForm.active
-      };
-      if (teacherAssignmentForm.id) {
-        await apiPatch(
-          `/api/admin/teacher-assignments/${teacherAssignmentForm.id}`,
-          payload,
-          token
-        );
-        setSaved("Teacher assignment updated");
-      } else {
-        await apiPost("/api/admin/teacher-assignments", payload, token);
-        setSaved("Teacher assignment created");
-      }
-      setTeacherAssignmentForm(emptyTeacherAssignment);
-      await load();
-    });
-  }
-
-  async function deleteTeacherAssignment(assignment: TeacherAssignment) {
-    if (!window.confirm(`Delete ${assignment.teacher_name} assignment?`)) {
-      return;
-    }
-    await runSave(`teacher-assignment-delete-${assignment.id}`, async () => {
-      await apiDelete(`/api/admin/teacher-assignments/${assignment.id}`, token);
-      setSaved("Teacher assignment deleted");
       await load();
     });
   }
@@ -1219,203 +1105,6 @@ export function AdminConfigBuilder({
                     >
                       Edit
                     </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </article>
-      ) : null}
-
-      {activeTab === "teacher-assignments" ? (
-      <article className={cardClass}>
-        <h2 className="text-lg font-semibold">Teaching Assignments</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Assign teachers to academic years, classes, sections, subjects, and responsibilities. A teacher with designation Principal in Profiles can monitor all classes.
-        </p>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <label className="text-sm font-medium text-slate-700">
-            Teacher
-            <select
-              className={inputClass}
-              value={teacherAssignmentForm.teacher_user_id}
-              onChange={(event) =>
-                setTeacherAssignmentForm({
-                  ...teacherAssignmentForm,
-                  teacher_user_id: event.target.value
-                })
-              }
-            >
-              <option value="">Select teacher</option>
-              {teacherAssignments.options.teachers.map((teacher) => (
-                <option key={teacher.value} value={teacher.value}>
-                  {teacher.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Academic Year
-            <select
-              className={inputClass}
-              value={teacherAssignmentForm.academic_year}
-              onChange={(event) =>
-                setTeacherAssignmentForm({ ...teacherAssignmentForm, academic_year: event.target.value })
-              }
-            >
-              <option value="">Select year</option>
-              {teacherAssignments.options.academic_years.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Class
-            <select
-              className={inputClass}
-              value={teacherAssignmentForm.class_name}
-              onChange={(event) =>
-                setTeacherAssignmentForm({ ...teacherAssignmentForm, class_name: event.target.value })
-              }
-            >
-              <option value="">Select class</option>
-              {teacherAssignments.options.classes.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Section
-            <select
-              className={inputClass}
-              value={teacherAssignmentForm.section}
-              onChange={(event) =>
-                setTeacherAssignmentForm({ ...teacherAssignmentForm, section: event.target.value })
-              }
-            >
-              <option value="">Select section</option>
-              {teacherAssignments.options.sections.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Subject
-            <select
-              className={inputClass}
-              value={teacherAssignmentForm.subject}
-              onChange={(event) =>
-                setTeacherAssignmentForm({ ...teacherAssignmentForm, subject: event.target.value })
-              }
-            >
-              <option value="">Select subject</option>
-              {teacherAssignments.options.subjects.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Assignment Role
-            <select
-              className={inputClass}
-              value={teacherAssignmentForm.assignment_role}
-              onChange={(event) =>
-                setTeacherAssignmentForm({
-                  ...teacherAssignmentForm,
-                  assignment_role: event.target.value
-                })
-              }
-            >
-              {teacherAssignments.options.assignment_roles.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-2 self-end text-sm font-medium text-slate-700">
-            <input
-              checked={teacherAssignmentForm.active}
-              type="checkbox"
-              onChange={(event) =>
-                setTeacherAssignmentForm({ ...teacherAssignmentForm, active: event.target.checked })
-              }
-            />
-            Active
-          </label>
-          <div className="flex items-end gap-2">
-            <button
-              className="rounded-2xl bg-[#173b45] px-4 py-2.5 text-sm font-semibold text-white"
-              disabled={savingAction === "teacher-assignment"}
-              onClick={saveTeacherAssignment}
-            >
-              {teacherAssignmentForm.id ? "Update Assignment" : "Add Assignment"}
-            </button>
-            {teacherAssignmentForm.id ? (
-              <button
-                className="rounded-2xl border border-[#e6d6bf] bg-white/70 px-4 py-2.5 text-sm font-semibold text-slate-700"
-                onClick={() => setTeacherAssignmentForm(emptyTeacherAssignment)}
-              >
-                Cancel
-              </button>
-            ) : null}
-          </div>
-        </div>
-        <div className="mt-5 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase tracking-[0.12em] text-slate-500">
-              <tr>
-                <th className="py-2">Teacher</th>
-                <th>Year</th>
-                <th>Class</th>
-                <th>Section</th>
-                <th>Subject</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {teacherAssignments.assignments.length === 0 ? (
-                <tr className="border-t border-[#eadcc9]">
-                  <td className="py-4 text-sm text-slate-500" colSpan={8}>
-                    No teacher assignments yet.
-                  </td>
-                </tr>
-              ) : null}
-              {teacherAssignments.assignments.map((assignment) => (
-                <tr className="border-t border-[#eadcc9]" key={assignment.id}>
-                  <td className="py-3 font-semibold">{assignment.teacher_name}</td>
-                  <td>{assignment.academic_year || "-"}</td>
-                  <td>{assignment.class_name}</td>
-                  <td>{assignment.section}</td>
-                  <td>{assignment.subject || "-"}</td>
-                  <td>{assignment.assignment_role}</td>
-                  <td>{assignment.active ? "Active" : "Disabled"}</td>
-                  <td>
-                    <div className="flex gap-2">
-                      <button
-                        className="rounded-xl border border-[#d9b980] px-3 py-1.5 text-xs font-semibold text-[#70470f]"
-                        onClick={() => editTeacherAssignment(assignment)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="rounded-xl border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700"
-                        onClick={() => deleteTeacherAssignment(assignment)}
-                      >
-                        Delete
-                      </button>
-                    </div>
                   </td>
                 </tr>
               ))}
