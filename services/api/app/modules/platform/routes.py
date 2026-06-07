@@ -680,11 +680,6 @@ def create_fields(db: Session, module_key: str) -> list[dict]:
         base_keys = {field["key"] for field in base_fields}
         extra_fields = [
             {"key": "password", "label": "Password", "type": "text", "required": False},
-            {"key": "assignment_academic_year", "label": "Assignment Year", "type": "select", "required": False, "options": academic_year_options(db)},
-            {"key": "assignment_class", "label": "Assigned Class", "type": "select", "required": False, "options": class_options(db)},
-            {"key": "assignment_section", "label": "Assigned Section", "type": "select", "required": False, "options": section_options(db)},
-            {"key": "assignment_subject", "label": "Subject", "type": "select", "required": False, "options": subject_options(db)},
-            {"key": "assignment_role", "label": "Assignment Role", "type": "select", "required": False, "options": master_options(db, "teacher_assignment_roles")},
         ]
         return base_fields + [field for field in extra_fields if field["key"] not in base_keys]
     if module_key == "teacher_assignments":
@@ -2152,7 +2147,6 @@ def create_module_record(
         profile.active = account.active
         save_custom_values(db, "teachers", account.id, teacher_fields, payload)
         save_profile_custom_values(db, "teacher", profile.id, payload)
-        save_primary_teacher_assignment(db, account.id, payload)
         db.commit()
         return {"status": "created", "id": account.id}
     if module_key == "attendance":
@@ -2288,7 +2282,6 @@ def update_module_record(
         profile.active = account.active
         save_custom_values(db, "teachers", account.id, teacher_fields, payload)
         save_profile_custom_values(db, "teacher", profile.id, payload)
-        save_primary_teacher_assignment(db, account.id, payload)
     elif module_key == "attendance":
         attendance = db.get(AttendanceRecord, record_id)
         if not attendance:

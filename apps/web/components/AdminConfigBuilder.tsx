@@ -243,7 +243,7 @@ const tabs = [
   { key: "institution", label: "Institution" },
   { key: "users", label: "Users" },
   { key: "profiles", label: "Profiles" },
-  { key: "teacher-assignments", label: "Teacher Assignments" },
+  { key: "teacher-assignments", label: "Teaching Assignments" },
   { key: "master-data", label: "Master Data" },
   { key: "profile-fields", label: "Profile Fields" },
   { key: "modules", label: "Modules" }
@@ -1206,9 +1206,9 @@ export function AdminConfigBuilder({
 
       {activeTab === "teacher-assignments" ? (
       <article className={cardClass}>
-        <h2 className="text-lg font-semibold">Teacher Assignments</h2>
+        <h2 className="text-lg font-semibold">Teaching Assignments</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Assign teachers to classes, sections, and subjects. A teacher with designation Principal in Profiles can monitor all classes.
+          Assign teachers to academic years, classes, sections, subjects, and responsibilities. A teacher with designation Principal in Profiles can monitor all classes.
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <label className="text-sm font-medium text-slate-700">

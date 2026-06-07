@@ -231,13 +231,13 @@ def core_modules() -> list[tuple[str, str, str, str, str]]:
         ("academic_years", "Academic Years", "Year setup used by classes, sections, enrollments, exams, and teacher assignments.", "CalendarDays", "sky"),
         ("classes", "Classes", "Grades for a specific academic year.", "BookOpen", "sky"),
         ("sections", "Sections", "Class sections with capacity, rooms, and class teacher context.", "LayoutDashboard", "teal"),
-        ("subjects", "Subjects", "Subjects that can be assigned to teachers and exams.", "BookOpen", "violet"),
-        ("section_subjects", "Section Subjects", "Subjects offered for a class section, including teachers and choice type.", "BookOpen", "emerald"),
-        ("student_subject_choices", "Student Subject Choices", "Student-level subject choices such as second language or electives.", "GraduationCap", "amber"),
-        ("teacher_assignments", "Teacher Assignments", "Multiple class, section, subject, and responsibility assignments for teachers.", "Users", "rose"),
+        ("subjects", "Subject Catalog", "Master list of subjects such as Maths, English, Science, Hindi, or Computer Science.", "BookOpen", "violet"),
+        ("section_subjects", "Subject Offerings", "Subjects taught for a specific academic year, class, and section, with teacher and choice type.", "BookOpen", "emerald"),
+        ("student_subject_choices", "Student Choices", "Student-level subject choices such as second language or electives.", "GraduationCap", "amber"),
+        ("teacher_assignments", "Teaching Assignments", "Year-wise class, section, subject, and responsibility assignments for teachers.", "Users", "rose"),
         ("students", "Students", "Identity, guardians, classes, and learner context.", "GraduationCap", "cyan"),
         ("student_enrollments", "Student Enrollments", "Current and historical student placement by academic year, class, section, and roll number.", "GraduationCap", "cyan"),
-        ("teachers", "Teachers", "Teacher profiles, login access, and class or subject assignments.", "Users", "rose"),
+        ("teachers", "Teacher Directory", "Teacher identity, login access, contact details, designation, and expertise.", "Users", "rose"),
         ("attendance", "Attendance", "Daily marking, risk detection, and interventions.", "ClipboardCheck", "emerald"),
         ("fees", "Fees", "Invoices, balances, dues, and payment follow-up.", "CircleDollarSign", "amber"),
         ("exams", "Exams", "Assessments, schedules, terms, and class applicability.", "CalendarDays", "amber"),
@@ -324,8 +324,8 @@ def core_module_fields() -> dict[str, list[tuple[str, str, str, bool, bool]]]:
             ("employee_code", "Employee Code", "text", True, False),
             ("department", "Department", "text", True, False),
             ("designation", "Designation", "text", True, False),
-            ("subjects", "Subjects", "text", True, False),
-            ("assignment_summary", "Assignments", "text", True, False),
+            ("subjects", "Subject Expertise", "text", True, False),
+            ("assignment_summary", "Teaching Load", "text", True, False),
             ("active", "Status", "text", True, False),
         ],
         "attendance": [
@@ -379,18 +379,29 @@ def ensure_core_modules(db: Session) -> None:
                     accent=accent,
                 )
             )
+            continue
+        module.label = label
+        module.description = description
+        module.icon = icon
+        module.accent = accent
 
 
 def ensure_module_fields(db: Session) -> None:
+    label_refresh = {
+        ("teachers", "subjects"): "Subject Expertise",
+        ("teachers", "assignment_summary"): "Teaching Load",
+    }
     for module_key, fields in core_module_fields().items():
-        existing_keys = {
-            key
-            for key in db.scalars(
-                select(ModuleField.key).where(ModuleField.module_key == module_key)
+        existing_fields = {
+            field.key: field
+            for field in db.scalars(
+                select(ModuleField).where(ModuleField.module_key == module_key)
             ).all()
         }
         for index, (key, label, field_type, visible, required) in enumerate(fields):
-            if key in existing_keys:
+            if key in existing_fields:
+                if (module_key, key) in label_refresh:
+                    existing_fields[key].label = label_refresh[(module_key, key)]
                 continue
             db.add(
                 ModuleField(

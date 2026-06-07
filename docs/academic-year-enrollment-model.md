@@ -10,7 +10,7 @@ This product keeps the day-to-day school setup simple by separating identity fro
 - `Students`: stores stable student identity, admission number, guardian name, and configurable student attributes.
 - `Student Enrollments`: connects a student to an academic year, class, section, roll number, and active/inactive status.
 - `Teachers`: stores teacher identity and profile attributes.
-- `Teacher Assignments`: connects a teacher to an academic year, class, section, subject, and assignment role.
+- `Teaching Assignments`: connects a teacher to an academic year, class, section, subject, and assignment role.
 
 ## Why This Is Cleaner
 
@@ -26,7 +26,7 @@ Example:
 | Student | `Anni`, admission `A001` |
 | Student Enrollment | `Anni`, `2026-27`, `Grade 6`, `A`, roll `12`, active |
 | Teacher | `Lakshmi` |
-| Teacher Assignment | `Lakshmi`, `2026-27`, `Grade 6`, `A`, `Mathematics`, `Class Teacher` |
+| Teaching Assignment | `Lakshmi`, `2026-27`, `Grade 6`, `A`, `Mathematics`, `Class Teacher` |
 
 ## Current Compatibility Rule
 
@@ -42,6 +42,12 @@ When displaying or checking access, the app first looks for an active Student En
 4. Create Students.
 5. Enroll Students into the right year, class, and section.
 6. Create Teachers.
-7. Add Teacher Assignments for the year, class, section, and subject.
+7. Add Teaching Assignments for the year, class, section, and subject.
 
 This keeps the UI understandable while preserving a model that can support promotion, transfers, multi-year history, exams, attendance, and teacher allocation later.
+
+## Teacher Cleanup Rule
+
+Teacher Directory is only for the person: name, login, employee code, department, designation, contact details, and subject expertise.
+
+Teaching Assignments are separate because one teacher can teach multiple sections, multiple subjects, and may be a class teacher for one or more sections in a specific academic year.
