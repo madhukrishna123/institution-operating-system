@@ -746,17 +746,19 @@ export function AdminConfigBuilder({
     "sections",
     "subjects",
     "section_subjects",
-    "student_subject_choices",
-    "teacher_assignments",
+    "exams",
     "students",
     "student_enrollments",
-    "teachers",
+    "student_subject_choices",
     "attendance",
     "fees",
-    "exams",
+    "teachers",
+    "teacher_assignments",
     "configuration"
   ];
-  const configurableModules = modules.filter((module) => configurableModuleKeys.includes(module.key));
+  const configurableModules = configurableModuleKeys
+    .map((key) => modules.find((module) => module.key === key))
+    .filter((module): module is ModuleConfig => Boolean(module));
   const activeModule = configurableModules.find((module) => module.key === activeModuleKey) ?? configurableModules[0];
   const needsStudentLink = userForm.role === "student" || userForm.role === "parent";
   const activeProfileGroup = profileFields.find((group) => group.profile_type === activeProfileType);
