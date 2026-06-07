@@ -68,6 +68,7 @@ type AgentWork = {
 };
 
 const workingModules = new Set([
+  "academic_years",
   "classes",
   "sections",
   "subjects",
@@ -75,6 +76,7 @@ const workingModules = new Set([
   "student_subject_choices",
   "teacher_assignments",
   "students",
+  "student_enrollments",
   "teachers",
   "attendance",
   "fees",
@@ -104,12 +106,14 @@ function defaultValues(moduleKey: string): Record<string, string> {
   if (
     [
       "classes",
+      "academic_years",
       "sections",
       "subjects",
       "section_subjects",
       "student_subject_choices",
       "teacher_assignments",
       "students",
+      "student_enrollments",
       "teachers",
       "exams"
     ].includes(moduleKey)

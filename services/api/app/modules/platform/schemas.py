@@ -120,6 +120,7 @@ class RoleProfileUpdate(BaseModel):
 
 class TeacherAssignmentCreate(BaseModel):
     teacher_user_id: int
+    academic_year: str = ""
     class_name: str
     section: str
     subject: str = ""
@@ -129,6 +130,7 @@ class TeacherAssignmentCreate(BaseModel):
 
 class TeacherAssignmentUpdate(BaseModel):
     teacher_user_id: int
+    academic_year: str = ""
     class_name: str
     section: str
     subject: str = ""

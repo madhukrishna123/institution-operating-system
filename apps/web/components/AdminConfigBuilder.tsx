@@ -113,6 +113,7 @@ type TeacherAssignment = {
   id: number;
   teacher_user_id: number;
   teacher_name: string;
+  academic_year: string;
   class_name: string;
   section: string;
   subject: string;
@@ -122,6 +123,7 @@ type TeacherAssignment = {
 
 type TeacherAssignmentOptions = {
   teachers: { label: string; value: number }[];
+  academic_years: { label: string; value: string }[];
   classes: { label: string; value: string }[];
   sections: { label: string; value: string }[];
   subjects: { label: string; value: string }[];
@@ -173,6 +175,7 @@ type RoleProfileForm = {
 type TeacherAssignmentForm = {
   id?: number;
   teacher_user_id: string;
+  academic_year: string;
   class_name: string;
   section: string;
   subject: string;
@@ -223,6 +226,7 @@ const emptyRoleProfile: RoleProfileForm = {
 
 const emptyTeacherAssignment: TeacherAssignmentForm = {
   teacher_user_id: "",
+  academic_year: "",
   class_name: "",
   section: "",
   subject: "",
@@ -239,6 +243,7 @@ const tabs = [
   { key: "institution", label: "Institution" },
   { key: "users", label: "Users" },
   { key: "profiles", label: "Profiles" },
+  { key: "teacher-assignments", label: "Teacher Assignments" },
   { key: "master-data", label: "Master Data" },
   { key: "profile-fields", label: "Profile Fields" },
   { key: "modules", label: "Modules" }
@@ -260,7 +265,7 @@ export function AdminConfigBuilder({
     profiles: []
   });
   const [teacherAssignments, setTeacherAssignments] = useState<TeacherAssignmentsResponse>({
-    options: { teachers: [], classes: [], sections: [], subjects: [], assignment_roles: [] },
+    options: { teachers: [], academic_years: [], classes: [], sections: [], subjects: [], assignment_roles: [] },
     assignments: []
   });
   const [masterData, setMasterData] = useState<MasterDataSet[]>([]);
@@ -488,6 +493,7 @@ export function AdminConfigBuilder({
     setTeacherAssignmentForm({
       id: assignment.id,
       teacher_user_id: String(assignment.teacher_user_id),
+      academic_year: assignment.academic_year,
       class_name: assignment.class_name,
       section: assignment.section,
       subject: assignment.subject,
@@ -506,6 +512,7 @@ export function AdminConfigBuilder({
     await runSave("teacher-assignment", async () => {
       const payload = {
         teacher_user_id: Number(teacherAssignmentForm.teacher_user_id),
+        academic_year: teacherAssignmentForm.academic_year,
         class_name: teacherAssignmentForm.class_name,
         section: teacherAssignmentForm.section,
         subject: teacherAssignmentForm.subject,
@@ -734,6 +741,7 @@ export function AdminConfigBuilder({
   }
 
   const configurableModuleKeys = [
+    "academic_years",
     "classes",
     "sections",
     "subjects",
@@ -741,6 +749,7 @@ export function AdminConfigBuilder({
     "student_subject_choices",
     "teacher_assignments",
     "students",
+    "student_enrollments",
     "teachers",
     "attendance",
     "fees",
@@ -1223,6 +1232,23 @@ export function AdminConfigBuilder({
             </select>
           </label>
           <label className="text-sm font-medium text-slate-700">
+            Academic Year
+            <select
+              className={inputClass}
+              value={teacherAssignmentForm.academic_year}
+              onChange={(event) =>
+                setTeacherAssignmentForm({ ...teacherAssignmentForm, academic_year: event.target.value })
+              }
+            >
+              <option value="">Select year</option>
+              {teacherAssignments.options.academic_years.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm font-medium text-slate-700">
             Class
             <select
               className={inputClass}
@@ -1325,6 +1351,7 @@ export function AdminConfigBuilder({
             <thead className="text-xs uppercase tracking-[0.12em] text-slate-500">
               <tr>
                 <th className="py-2">Teacher</th>
+                <th>Year</th>
                 <th>Class</th>
                 <th>Section</th>
                 <th>Subject</th>
@@ -1336,7 +1363,7 @@ export function AdminConfigBuilder({
             <tbody>
               {teacherAssignments.assignments.length === 0 ? (
                 <tr className="border-t border-[#eadcc9]">
-                  <td className="py-4 text-sm text-slate-500" colSpan={7}>
+                  <td className="py-4 text-sm text-slate-500" colSpan={8}>
                     No teacher assignments yet.
                   </td>
                 </tr>
@@ -1344,6 +1371,7 @@ export function AdminConfigBuilder({
               {teacherAssignments.assignments.map((assignment) => (
                 <tr className="border-t border-[#eadcc9]" key={assignment.id}>
                   <td className="py-3 font-semibold">{assignment.teacher_name}</td>
+                  <td>{assignment.academic_year || "-"}</td>
                   <td>{assignment.class_name}</td>
                   <td>{assignment.section}</td>
                   <td>{assignment.subject || "-"}</td>

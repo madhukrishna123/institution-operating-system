@@ -1,7 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import (
@@ -133,6 +133,7 @@ def serialize_module_field(db: Session, field: ModuleField, source: str | None =
 
 def with_field_options(db: Session, field: dict) -> dict:
     option_sets = {
+        "academic_year": academic_year_options(db),
         "class_name": class_options(db),
         "section": section_options(db),
         "assignment_class": class_options(db),
@@ -209,12 +210,16 @@ def module_record_options(
     return options
 
 
+def academic_year_options(db: Session) -> list[dict[str, str]]:
+    return module_record_options(db, "academic_years", ["name"], value_key="name")
+
+
 def class_options(db: Session) -> list[dict[str, str]]:
     return module_record_options(db, "classes", ["name", "academic_year"]) or master_options(db, "classes")
 
 
 def section_options(db: Session) -> list[dict[str, str]]:
-    return module_record_options(db, "sections", ["class_name", "name"]) or master_options(db, "sections")
+    return module_record_options(db, "sections", ["academic_year", "class_name", "name"]) or master_options(db, "sections")
 
 
 def subject_options(db: Session) -> list[dict[str, str]]:
@@ -245,11 +250,13 @@ def teacher_account_by_name(db: Session, teacher_name: str) -> UserAccount | Non
 PROFILE_TYPES = ["student", "teacher", "parent", "staff", "finance", "admin"]
 ROLE_PROFILE_TYPES = ["teacher", "parent", "staff", "finance", "admin"]
 GENERIC_MODULE_KEYS = {
+    "academic_years",
     "classes",
     "sections",
     "subjects",
     "section_subjects",
     "student_subject_choices",
+    "student_enrollments",
     "teacher_assignments",
     "exams",
 }
@@ -418,6 +425,7 @@ def save_module_record_values(
 
 
 def sync_section_class_teacher_assignment(db: Session, record_id: int, payload: dict) -> None:
+    academic_year = str(payload.get("academic_year") or "").strip()
     class_name = str(payload.get("class_name") or "").strip()
     section = str(payload.get("name") or "").strip()
     teacher_name = str(payload.get("class_teacher") or "").strip()
@@ -428,6 +436,7 @@ def sync_section_class_teacher_assignment(db: Session, record_id: int, payload: 
             TeacherAssignment.class_name == class_name,
             TeacherAssignment.section == section,
             TeacherAssignment.assignment_role == "Class Teacher",
+            TeacherAssignment.academic_year == academic_year,
         )
     ).all()
     teacher = teacher_account_by_name(db, teacher_name)
@@ -444,6 +453,7 @@ def sync_section_class_teacher_assignment(db: Session, record_id: int, payload: 
             TeacherAssignment.class_name == class_name,
             TeacherAssignment.section == section,
             TeacherAssignment.assignment_role == "Class Teacher",
+            TeacherAssignment.academic_year == academic_year,
         )
     )
     if not row:
@@ -463,6 +473,7 @@ def sync_section_class_teacher_assignment(db: Session, record_id: int, payload: 
                 break
         row = TeacherAssignment(
             teacher_user_id=teacher.id,
+            academic_year=academic_year,
             class_name=class_name,
             section=section,
             subject=subject,
@@ -486,6 +497,9 @@ def create_or_update_teacher_assignment_from_payload(
         raise HTTPException(status_code=400, detail="Select a valid teacher")
     class_name = str(payload.get("class_name") or "").strip()
     section = str(payload.get("section") or "").strip()
+    academic_year = str(payload.get("academic_year") or "").strip()
+    if not academic_year:
+        raise HTTPException(status_code=400, detail="Academic year is required")
     if not class_name:
         raise HTTPException(status_code=400, detail="Class is required")
     if not section:
@@ -497,12 +511,24 @@ def create_or_update_teacher_assignment_from_payload(
         row = TeacherAssignment(teacher_user_id=teacher.id)
         db.add(row)
     row.teacher_user_id = teacher.id
+    row.academic_year = academic_year
     row.class_name = class_name
     row.section = section
     row.subject = str(payload.get("subject") or "").strip()
     row.assignment_role = str(payload.get("assignment_role") or "Subject Teacher").strip() or "Subject Teacher"
     row.active = str(payload.get("status") or "active").strip().lower() != "inactive"
     return row
+
+
+def sync_student_enrollment(db: Session, payload: dict) -> None:
+    student_id = int(str(payload.get("student") or "0") or 0)
+    student = db.get(Student, student_id)
+    if not student:
+        return
+    if str(payload.get("status") or "active").strip().lower() == "inactive":
+        return
+    student.class_name = str(payload.get("class_name") or student.class_name).strip()
+    student.section = str(payload.get("section") or student.section).strip()
 
 
 def save_custom_values(
@@ -522,6 +548,7 @@ def save_custom_values(
     }
     core_teacher_fields = CORE_TEACHER_FIELDS | {
         "password",
+        "assignment_academic_year",
         "assignment_class",
         "assignment_section",
         "assignment_subject",
@@ -581,13 +608,13 @@ def validate_required_fields(fields: list[dict], payload: dict) -> None:
 
 def student_options(db: Session) -> list[dict[str, str]]:
     students = db.scalars(select(Student).order_by(Student.full_name)).all()
-    return [
-        {
-            "label": f"{student.full_name} · {student.class_name}",
-            "value": str(student.id),
-        }
-        for student in students
-    ]
+    options = []
+    for student in students:
+        academic_year, class_name, section = student_placement(db, student)
+        placement = " / ".join([part for part in [academic_year, class_name, section] if part])
+        label = f"{student.full_name} - {placement}" if placement else student.full_name
+        options.append({"label": label, "value": str(student.id)})
+    return options
 
 
 def create_fields(db: Session, module_key: str) -> list[dict]:
@@ -653,6 +680,7 @@ def create_fields(db: Session, module_key: str) -> list[dict]:
         base_keys = {field["key"] for field in base_fields}
         extra_fields = [
             {"key": "password", "label": "Password", "type": "text", "required": False},
+            {"key": "assignment_academic_year", "label": "Assignment Year", "type": "select", "required": False, "options": academic_year_options(db)},
             {"key": "assignment_class", "label": "Assigned Class", "type": "select", "required": False, "options": class_options(db)},
             {"key": "assignment_section", "label": "Assigned Section", "type": "select", "required": False, "options": section_options(db)},
             {"key": "assignment_subject", "label": "Subject", "type": "select", "required": False, "options": subject_options(db)},
@@ -670,11 +698,13 @@ def can_create_record(module_key: str, role: str) -> bool:
     allowed = {
         "students": role in ["admin", "super_admin"],
         "teachers": role in ["admin", "super_admin"],
+        "academic_years": role in ["admin", "super_admin"],
         "classes": role in ["admin", "super_admin"],
         "sections": role in ["admin", "super_admin"],
         "subjects": role in ["admin", "super_admin"],
         "section_subjects": role in ["admin", "super_admin"],
         "student_subject_choices": role in ["admin", "super_admin"],
+        "student_enrollments": role in ["admin", "super_admin"],
         "teacher_assignments": role in ["admin", "super_admin"],
         "exams": role in ["admin", "super_admin"],
         "attendance": role in ["teacher", "admin", "super_admin"],
@@ -687,11 +717,13 @@ def can_edit_record(module_key: str, role: str) -> bool:
     allowed = {
         "students": role in ["teacher", "admin", "super_admin"],
         "teachers": role in ["admin", "super_admin"],
+        "academic_years": role in ["admin", "super_admin"],
         "classes": role in ["admin", "super_admin"],
         "sections": role in ["admin", "super_admin"],
         "subjects": role in ["admin", "super_admin"],
         "section_subjects": role in ["admin", "super_admin"],
         "student_subject_choices": role in ["admin", "super_admin"],
+        "student_enrollments": role in ["admin", "super_admin"],
         "teacher_assignments": role in ["admin", "super_admin"],
         "exams": role in ["admin", "super_admin"],
         "attendance": role in ["teacher", "admin", "super_admin"],
@@ -704,11 +736,13 @@ def can_delete_record(module_key: str, role: str) -> bool:
     allowed = {
         "students": role in ["admin", "super_admin"],
         "teachers": role in ["admin", "super_admin"],
+        "academic_years": role in ["admin", "super_admin"],
         "classes": role in ["admin", "super_admin"],
         "sections": role in ["admin", "super_admin"],
         "subjects": role in ["admin", "super_admin"],
         "section_subjects": role in ["admin", "super_admin"],
         "student_subject_choices": role in ["admin", "super_admin"],
+        "student_enrollments": role in ["admin", "super_admin"],
         "teacher_assignments": role in ["admin", "super_admin"],
         "exams": role in ["admin", "super_admin"],
         "attendance": role in ["teacher", "admin", "super_admin"],
@@ -727,11 +761,13 @@ def ensure_record_permission(module_key: str, role: str, action: str) -> None:
         labels = {
             "students": "Teachers can only edit student class and section. Admin role is required for other student changes.",
             "teachers": "Teachers require admin role",
+            "academic_years": "Academic years require admin role",
             "classes": "Classes require admin role",
             "sections": "Sections require admin role",
             "subjects": "Subjects require admin role",
             "section_subjects": "Section subjects require admin role",
             "student_subject_choices": "Student subject choices require admin role",
+            "student_enrollments": "Student enrollments require admin role",
             "teacher_assignments": "Teacher assignments require admin role",
             "exams": "Exams require admin role",
             "attendance": "Attendance requires teacher/admin role",
@@ -949,6 +985,35 @@ def assigned_class_sections(db: Session, user: UserAccount) -> set[tuple[str, st
     }
 
 
+def current_student_enrollment(db: Session, student_id: int) -> dict[str, str] | None:
+    rows = db.scalars(
+        select(GenericModuleRecord)
+        .where(
+            GenericModuleRecord.module_key == "student_enrollments",
+            GenericModuleRecord.active == True,
+        )
+        .order_by(GenericModuleRecord.id.desc())
+    ).all()
+    for row in rows:
+        values = generic_record_values(db, "student_enrollments", row.id)
+        if values.get("student") == str(student_id) and values.get("status", "active") != "inactive":
+            return values
+    return None
+
+
+def student_placement(db: Session, student: Student | None) -> tuple[str, str, str]:
+    if not student:
+        return "", "", ""
+    enrollment = current_student_enrollment(db, student.id)
+    if enrollment:
+        return (
+            enrollment.get("academic_year", ""),
+            enrollment.get("class_name", student.class_name),
+            enrollment.get("section", student.section),
+        )
+    return "", student.class_name, student.section
+
+
 def can_access_student(db: Session, user: UserAccount, student: Student | None) -> bool:
     if not student:
         return False
@@ -959,7 +1024,8 @@ def can_access_student(db: Session, user: UserAccount, student: Student | None) 
     if user.role == "teacher":
         if is_principal(db, user):
             return True
-        return (student.class_name, student.section) in assigned_class_sections(db, user)
+        _, class_name, section = student_placement(db, student)
+        return (class_name, section) in assigned_class_sections(db, user)
     return False
 
 
@@ -1020,7 +1086,6 @@ def admin_user_options(
     user: UserAccount = Depends(current_user), db: Session = Depends(get_db)
 ) -> dict:
     require_admin(user)
-    students = db.scalars(select(Student).order_by(Student.full_name)).all()
     return {
         "roles": [
             {"label": "Super Admin", "value": "super_admin"},
@@ -1033,10 +1098,10 @@ def admin_user_options(
         ],
         "students": [
             {
-                "label": f"{student.full_name} - {student.class_name}-{student.section}",
-                "value": student.id,
+                "label": option["label"],
+                "value": int(option["value"]),
             }
-            for student in students
+            for option in student_options(db)
         ],
     }
 
@@ -1049,6 +1114,7 @@ def teacher_assignment_options(db: Session) -> dict:
     ).all()
     return {
         "teachers": [{"label": teacher.name, "value": teacher.id} for teacher in teachers],
+        "academic_years": academic_year_options(db),
         "classes": class_options(db),
         "sections": section_options(db),
         "subjects": subject_options(db),
@@ -1062,6 +1128,7 @@ def serialize_teacher_assignment(row: TeacherAssignment, db: Session) -> dict:
         "id": row.id,
         "teacher_user_id": row.teacher_user_id,
         "teacher_name": teacher.name if teacher else "",
+        "academic_year": row.academic_year,
         "class_name": row.class_name,
         "section": row.section,
         "subject": row.subject,
@@ -1097,6 +1164,7 @@ def primary_teacher_assignment(db: Session, teacher_user_id: int) -> TeacherAssi
 
 
 def save_primary_teacher_assignment(db: Session, teacher_user_id: int, payload: dict) -> None:
+    academic_year = str(payload.get("assignment_academic_year") or "").strip()
     class_name = str(payload.get("assignment_class") or "").strip()
     section = str(payload.get("assignment_section") or "").strip()
     subject = str(payload.get("assignment_subject") or "").strip()
@@ -1109,6 +1177,7 @@ def save_primary_teacher_assignment(db: Session, teacher_user_id: int, payload: 
     if not row:
         row = TeacherAssignment(teacher_user_id=teacher_user_id)
         db.add(row)
+    row.academic_year = academic_year
     row.class_name = class_name
     row.section = section
     row.subject = subject
@@ -1134,6 +1203,7 @@ def serialize_teacher_record(db: Session, account: UserAccount) -> dict:
         "contact_email": profile.contact_email,
         "whatsapp_number": profile.whatsapp_number,
         "active": "active" if account.active else "disabled",
+        "assignment_academic_year": assignment.academic_year if assignment else "",
         "assignment_class": assignment.class_name if assignment else "",
         "assignment_section": assignment.section if assignment else "",
         "assignment_subject": assignment.subject if assignment else "",
@@ -1154,6 +1224,8 @@ def validate_teacher_assignment(
         raise HTTPException(status_code=400, detail="Class is required")
     if not payload.section.strip():
         raise HTTPException(status_code=400, detail="Section is required")
+    if not payload.academic_year.strip():
+        raise HTTPException(status_code=400, detail="Academic year is required")
     return teacher
 
 
@@ -1164,6 +1236,7 @@ def get_teacher_assignments(
     require_admin(user)
     rows = db.scalars(
         select(TeacherAssignment).order_by(
+            TeacherAssignment.academic_year,
             TeacherAssignment.class_name,
             TeacherAssignment.section,
             TeacherAssignment.subject,
@@ -1185,6 +1258,7 @@ def create_teacher_assignment(
     validate_teacher_assignment(db, payload)
     row = TeacherAssignment(
         teacher_user_id=payload.teacher_user_id,
+        academic_year=payload.academic_year.strip(),
         class_name=payload.class_name.strip(),
         section=payload.section.strip(),
         subject=payload.subject.strip(),
@@ -1210,6 +1284,7 @@ def update_teacher_assignment(
         raise HTTPException(status_code=404, detail="Assignment not found")
     validate_teacher_assignment(db, payload)
     row.teacher_user_id = payload.teacher_user_id
+    row.academic_year = payload.academic_year.strip()
     row.class_name = payload.class_name.strip()
     row.section = payload.section.strip()
     row.subject = payload.subject.strip()
@@ -1838,26 +1913,22 @@ def module_records(
         query = select(Student).order_by(Student.full_name)
         if user.role in ["student", "parent"] and user.linked_student_id:
             query = query.where(Student.id == user.linked_student_id)
+        students = db.scalars(query).all()
         if user.role == "teacher" and not is_principal(db, user):
-            scopes = assigned_class_sections(db, user)
-            if scopes:
-                query = query.where(
-                    tuple_(Student.class_name, Student.section).in_(list(scopes))
-                )
-            else:
-                query = query.where(Student.id == -1)
+            students = [student for student in students if can_access_student(db, user, student)]
         records = [
             {
                 "id": item.id,
                 "admission_number": item.admission_number,
                 "full_name": item.full_name,
-                "class_name": item.class_name,
-                "section": item.section,
+                "academic_year": student_placement(db, item)[0],
+                "class_name": student_placement(db, item)[1],
+                "section": student_placement(db, item)[2],
                 "guardian_name": item.guardian_name,
                 "status": item.status,
                 **custom_values(db, "students", item.id),
             }
-            for item in db.scalars(query).all()
+            for item in students
         ]
     elif module_key == "teachers":
         ensure_record_permission(module_key, user.role, "edit")
@@ -1870,6 +1941,7 @@ def module_records(
     elif module_key == "teacher_assignments":
         rows = db.scalars(
             select(TeacherAssignment).order_by(
+                TeacherAssignment.academic_year,
                 TeacherAssignment.class_name,
                 TeacherAssignment.section,
                 TeacherAssignment.subject,
@@ -1879,6 +1951,7 @@ def module_records(
             {
                 "id": row.id,
                 "teacher": db.get(UserAccount, row.teacher_user_id).name if db.get(UserAccount, row.teacher_user_id) else "",
+                "academic_year": row.academic_year,
                 "class_name": row.class_name,
                 "section": row.section,
                 "subject": row.subject,
@@ -1899,8 +1972,8 @@ def module_records(
                 "student_id": record.student_id,
                 "attendance_date": str(record.attendance_date),
                 "student_name": student_name,
-                "class_name": db.get(Student, record.student_id).class_name if db.get(Student, record.student_id) else "",
-                "section": db.get(Student, record.student_id).section if db.get(Student, record.student_id) else "",
+                "class_name": student_placement(db, db.get(Student, record.student_id))[1],
+                "section": student_placement(db, db.get(Student, record.student_id))[2],
                 "status": record.status,
                 "note": record.note,
             }
@@ -1953,7 +2026,7 @@ def module_records(
         allowed_students = {
             str(student.id)
             for student in db.scalars(select(Student)).all()
-            if (student.class_name, student.section) in scopes
+            if student_placement(db, student)[1:] in scopes
         }
         record_form_fields = [
             (
@@ -2120,6 +2193,8 @@ def create_module_record(
         save_module_record_values(db, module_key, row.id, fields, payload)
         if module_key == "sections":
             sync_section_class_teacher_assignment(db, row.id, payload)
+        if module_key == "student_enrollments":
+            sync_student_enrollment(db, payload)
         db.commit()
         return {"status": "created", "id": row.id}
     raise HTTPException(status_code=400, detail="Generic create is not enabled for this module yet")
@@ -2254,6 +2329,8 @@ def update_module_record(
         save_module_record_values(db, module_key, row.id, fields, payload)
         if module_key == "sections":
             sync_section_class_teacher_assignment(db, row.id, payload)
+        if module_key == "student_enrollments":
+            sync_student_enrollment(db, payload)
     else:
         raise HTTPException(status_code=400, detail="Update is not enabled for this module yet")
     db.commit()

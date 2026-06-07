@@ -228,13 +228,15 @@ def seed_platform(db: Session) -> None:
 
 def core_modules() -> list[tuple[str, str, str, str, str]]:
     return [
-        ("classes", "Classes", "Academic years, grades, and active class groups.", "BookOpen", "sky"),
+        ("academic_years", "Academic Years", "Year setup used by classes, sections, enrollments, exams, and teacher assignments.", "CalendarDays", "sky"),
+        ("classes", "Classes", "Grades for a specific academic year.", "BookOpen", "sky"),
         ("sections", "Sections", "Class sections with capacity, rooms, and class teacher context.", "LayoutDashboard", "teal"),
         ("subjects", "Subjects", "Subjects that can be assigned to teachers and exams.", "BookOpen", "violet"),
         ("section_subjects", "Section Subjects", "Subjects offered for a class section, including teachers and choice type.", "BookOpen", "emerald"),
         ("student_subject_choices", "Student Subject Choices", "Student-level subject choices such as second language or electives.", "GraduationCap", "amber"),
         ("teacher_assignments", "Teacher Assignments", "Multiple class, section, subject, and responsibility assignments for teachers.", "Users", "rose"),
         ("students", "Students", "Identity, guardians, classes, and learner context.", "GraduationCap", "cyan"),
+        ("student_enrollments", "Student Enrollments", "Current and historical student placement by academic year, class, section, and roll number.", "GraduationCap", "cyan"),
         ("teachers", "Teachers", "Teacher profiles, login access, and class or subject assignments.", "Users", "rose"),
         ("attendance", "Attendance", "Daily marking, risk detection, and interventions.", "ClipboardCheck", "emerald"),
         ("fees", "Fees", "Invoices, balances, dues, and payment follow-up.", "CircleDollarSign", "amber"),
@@ -249,15 +251,22 @@ def core_modules() -> list[tuple[str, str, str, str, str]]:
 
 def core_module_fields() -> dict[str, list[tuple[str, str, str, bool, bool]]]:
     return {
+        "academic_years": [
+            ("name", "Academic Year", "text", True, True),
+            ("start_date", "Start Date", "date", True, False),
+            ("end_date", "End Date", "date", True, False),
+            ("status", "Status", "text", True, False),
+        ],
         "classes": [
             ("name", "Class Name", "text", True, True),
-            ("academic_year", "Academic Year", "text", True, False),
+            ("academic_year", "Academic Year", "select", True, True),
             ("status", "Status", "text", True, False),
         ],
         "sections": [
+            ("academic_year", "Academic Year", "select", True, True),
             ("class_name", "Class", "select", True, True),
             ("name", "Section Name", "text", True, True),
-            ("class_teacher", "Class Teacher", "text", True, False),
+            ("class_teacher", "Class Teacher", "select", True, False),
             ("room", "Room", "text", True, False),
             ("capacity", "Capacity", "number", True, False),
             ("status", "Status", "text", True, False),
@@ -274,23 +283,23 @@ def core_module_fields() -> dict[str, list[tuple[str, str, str, bool, bool]]]:
             ("subject", "Subject", "select", True, True),
             ("teacher", "Teacher", "select", True, False),
             ("subject_type", "Subject Type", "select", True, True),
-            ("academic_year", "Academic Year", "text", True, False),
+            ("academic_year", "Academic Year", "select", True, True),
             ("status", "Status", "text", True, False),
         ],
         "student_subject_choices": [
             ("student", "Student", "select", True, True),
             ("subject_type", "Subject Type", "select", True, True),
             ("subject", "Subject", "select", True, True),
-            ("academic_year", "Academic Year", "text", True, False),
+            ("academic_year", "Academic Year", "select", True, True),
             ("status", "Status", "text", True, False),
         ],
         "teacher_assignments": [
             ("teacher", "Teacher", "select", True, True),
+            ("academic_year", "Academic Year", "select", True, True),
             ("class_name", "Class", "select", True, True),
             ("section", "Section", "select", True, True),
             ("subject", "Subject", "select", True, False),
             ("assignment_role", "Assignment Role", "select", True, True),
-            ("academic_year", "Academic Year", "text", True, False),
             ("status", "Status", "text", True, False),
         ],
         "students": [
@@ -299,6 +308,14 @@ def core_module_fields() -> dict[str, list[tuple[str, str, str, bool, bool]]]:
             ("class_name", "Class", "text", True, True),
             ("section", "Section", "text", True, True),
             ("guardian_name", "Guardian", "text", True, True),
+            ("status", "Status", "text", True, False),
+        ],
+        "student_enrollments": [
+            ("student", "Student", "select", True, True),
+            ("academic_year", "Academic Year", "select", True, True),
+            ("class_name", "Class", "select", True, True),
+            ("section", "Section", "select", True, True),
+            ("roll_number", "Roll No.", "text", True, False),
             ("status", "Status", "text", True, False),
         ],
         "teachers": [
@@ -328,6 +345,7 @@ def core_module_fields() -> dict[str, list[tuple[str, str, str, bool, bool]]]:
         "exams": [
             ("name", "Exam Name", "text", True, True),
             ("term", "Term", "text", True, False),
+            ("academic_year", "Academic Year", "select", True, False),
             ("class_name", "Class", "select", True, False),
             ("start_date", "Start Date", "date", True, False),
             ("end_date", "End Date", "date", True, False),
@@ -338,8 +356,8 @@ def core_module_fields() -> dict[str, list[tuple[str, str, str, bool, bool]]]:
 
 def core_role_modules() -> dict[str, list[str]]:
     return {
-        "super_admin": ["classes", "sections", "subjects", "section_subjects", "student_subject_choices", "teacher_assignments", "students", "teachers", "attendance", "fees", "exams", "analytics", "configuration"],
-        "admin": ["classes", "sections", "subjects", "section_subjects", "student_subject_choices", "teacher_assignments", "students", "teachers", "attendance", "fees", "exams", "messages", "analytics", "configuration"],
+        "super_admin": ["academic_years", "classes", "sections", "subjects", "section_subjects", "student_subject_choices", "teacher_assignments", "students", "student_enrollments", "teachers", "attendance", "fees", "exams", "analytics", "configuration"],
+        "admin": ["academic_years", "classes", "sections", "subjects", "section_subjects", "student_subject_choices", "teacher_assignments", "students", "student_enrollments", "teachers", "attendance", "fees", "exams", "messages", "analytics", "configuration"],
         "teacher": ["students", "attendance", "exams", "timetable", "messages"],
         "student": ["attendance", "timetable", "exams", "messages"],
         "parent": ["attendance", "fees", "messages"],

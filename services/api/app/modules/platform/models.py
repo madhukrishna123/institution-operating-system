@@ -138,6 +138,7 @@ class TeacherAssignment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     teacher_user_id: Mapped[int] = mapped_column(ForeignKey("user_accounts.id"), index=True)
+    academic_year: Mapped[str] = mapped_column(String(40), default="", index=True)
     class_name: Mapped[str] = mapped_column(String(80), index=True)
     section: Mapped[str] = mapped_column(String(80), index=True)
     subject: Mapped[str] = mapped_column(String(120), default="")

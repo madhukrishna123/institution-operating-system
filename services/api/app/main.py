@@ -101,3 +101,9 @@ def ensure_sqlite_compatibility() -> None:
         ]
         if role_profile_columns and "contact_email" not in role_profile_columns:
             connection.execute(text("ALTER TABLE role_profiles ADD COLUMN contact_email VARCHAR(160) DEFAULT ''"))
+        teacher_assignment_columns = [
+            row[1]
+            for row in connection.execute(text("PRAGMA table_info(teacher_assignments)")).fetchall()
+        ]
+        if teacher_assignment_columns and "academic_year" not in teacher_assignment_columns:
+            connection.execute(text("ALTER TABLE teacher_assignments ADD COLUMN academic_year VARCHAR(40) DEFAULT ''"))
